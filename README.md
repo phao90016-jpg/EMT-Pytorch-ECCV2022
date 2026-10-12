@@ -124,6 +124,14 @@ EMT-Pytorch-ECCV2022/
 - 使用 bicubic 下采样 2 倍
 - 保存为 `DIV2K_train_LR_bicubic/X2/{name}x2.png`
 
+### 3. `src/meta_learning_local.sh`
+本地复现脚本，基于官方 `meta_learning.sh` 修改：
+- `--dir_data` 指向本地 `data/DIV2K`
+- `--batch_size 8`（适配 8GB 显存）
+- `--epochs 50`，`--decay 30-45`
+- `--save` 指向 `experiment/local_maml_espcn_x2_p144_b8_e50`
+- 脚本开头加 `cd "$(dirname "$0")"`，确保任意目录运行都能找到 `main.py`
+
 ## 已知问题与注意事项
 
 - **验证集读取**：当前代码在测试时仍读取 `DIV2K_train_HR` 的尾部数据，未使用 `DIV2K_valid_HR`。本次 smoke test 使用 `data_range 1-750/751-800`，测试范围是训练目录中的图像。若需评估真正的 DIV2K 验证集，需要调整 `src/data/div2k.py`。
@@ -132,13 +140,17 @@ EMT-Pytorch-ECCV2022/
 - **训练依赖**：`utility.py` 需要 `numba`。当前环境已安装，但它及 `tqdm`、`tensorboardX`、`h5py` 尚未全部纳入依赖锁文件。
 - **WSL 路径干扰**：如果从新终端运行，建议检查 `PATH` 中是否有 Windows Anaconda 路径干扰；避免无必要地修改全局 `PATH`。
 
-## 后续计划
+## 复现进度
 
-1. 使用完整 DIV2K 训练集运行 800 epochs 元学习
-2. 下载 VSD4K 数据集，适配 `meta_tuning.sh`
-3. 实现梯度掩码生成与元调优
-4. 复现论文中的 PSNR/SSIM 与流量节省指标
-5. 整理复现报告
+- [x] 环境搭建（venv + PyTorch + CUDA）
+- [x] DIV2K 训练集/验证集下载与解压
+- [x] 从 HR 生成 x2 LR 图像（`generate_lr.py`）
+- [x] 修改 `src/meta_learning.sh` 适配本地路径与 8GB 显存
+- [x] 跑通 smoke test（`--epochs 2`，PSNR 22.877）
+- [x] 完整元学习训练（50 epochs，最佳 PSNR 32.252 @epoch 46）
+- [x] VSD4K 数据集下载与解压（`lol_15s_1`，495 帧 HR + X2 LR）
+- [ ] 元调优阶段（`meta_tuning`）
+- [ ] 梯度掩码分析与结果评估
 
 ## 参考
 
