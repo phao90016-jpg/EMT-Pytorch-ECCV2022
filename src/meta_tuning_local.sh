@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0 python main.py \
   --save /home/penghao/code/EMT-Pytorch-ECCV2022/experiment/local_tuning_lol_MG1 \
   --pre_train /home/penghao/code/EMT-Pytorch-ECCV2022/experiment/experiment/local_maml_espcn_x2_p144_b8_e50/model/46/model_best.pt \
   --reset \
-  --data_train DIV2K --data_test DIV2K \
+  --data_train DIV2K_PSNR --data_test DIV2K \
   --data_range 1-150/1-150 \
   --is45s \
   --dir_data /home/penghao/code/EMT-Pytorch-ECCV2022/data/VSD4K/lol_15s_1 \
@@ -22,7 +22,7 @@ CUDA_VISIBLE_DEVICES=0 python main.py \
   --save /home/penghao/code/EMT-Pytorch-ECCV2022/experiment/local_tuning_lol_MG1 \
   --pre_train /home/penghao/code/EMT-Pytorch-ECCV2022/experiment/experiment/local_maml_espcn_x2_p144_b8_e50/model/46/model_best.pt \
   --reset \
-  --data_train DIV2K --data_test DIV2K \
+  --data_train DIV2K_PSNR --data_test DIV2K \
   --data_range 1-150/1-150 \
   --is45s \
   --dir_data /home/penghao/code/EMT-Pytorch-ECCV2022/data/VSD4K/lol_15s_1 \

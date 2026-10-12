@@ -45,8 +45,9 @@ pip install -r requirements-lock.txt
 - [x] 完整元学习训练（50 epochs，最佳 PSNR 32.252 @epoch 46）
 - [x] VSD4K 数据集下载与解压（`lol_15s_1`，495 帧 HR + X2 LR）
 - [x] 元调优 smoke test（MG1 的 `find_mask` + `grad_mask` 跑通）
+- [x] 为 `lol_15s_1` 生成完整 `psnr_map`（495 帧）
 - [ ] 元调优完整流程（MG1~MG4 多段）
-- [ ] 生成 `psnr_map`，运行论文原版 `DIV2K_PSNR` 采样流程
+- [ ] 使用 `DIV2K_PSNR` 和新生成的 `psnr_map` 重新验证元调优
 - [ ] 结果评估与对比
 
 ## 目录结构
@@ -73,6 +74,7 @@ EMT-Pytorch-ECCV2022/
 │       └── lol_15s_1/
 │           ├── DIV2K_train_HR/
 │           ├── DIV2K_train_LR_bicubic/X2|X3|X4/
+│           ├── psnr_map/              # 495 张帧级采样映射（本地生成）
 │           └── video/
 ├── experiment/                       # 训练输出（未纳入版本控制）
 ├── grad_mask/                        # 梯度掩码文件（未纳入版本控制）
@@ -105,7 +107,7 @@ python generate_lr.py
 
 从 CaFM-Pytorch-ICCV2021 仓库获取 VSD4K 数据集，解压后放到 `data/VSD4K/`。
 
-本复现使用 `game_15s_1.zip`（内含 `lol_15s_1` 目录，495 帧），解压后的数据结构如下：
+本复现使用 `game_15s_1.zip`（内含 `lol_15s_1` 目录，495 帧），解压后的数据结构如下；`psnr_map/` 是后续运行映射生成流程后得到的目录：
 
 ```text
 data/VSD4K/lol_15s_1/
@@ -114,6 +116,7 @@ data/VSD4K/lol_15s_1/
 │   ├── X2/                            # 00001x2.png ~ 00495x2.png
 │   ├── X3/
 │   └── X4/
+├── psnr_map/                          # 通过 --patchnet_test 生成
 └── video/
     └── lol_15s_1080p_fps30_bv10.mp4
 ```
@@ -140,7 +143,7 @@ mkdir -p grad_mask
 bash src/meta_tuning_local.sh
 ```
 
-本地脚本中的数据、预训练权重和输出路径按当前工作环境配置；若仓库路径或数据位置不同，请先修改 `src/meta_learning_local.sh` 和 `src/meta_tuning_local.sh` 中对应的绝对路径。元调优脚本当前对 MG1 执行 `find_mask` 和 `grad_mask` smoke test（各 2 epochs）。
+本地脚本中的数据、预训练权重和输出路径按当前工作环境配置；若仓库路径或数据位置不同，请先修改 `src/meta_learning_local.sh` 和 `src/meta_tuning_local.sh` 中对应的绝对路径。元调优脚本当前对 MG1 执行 `find_mask` 和 `grad_mask` smoke test（各 2 epochs）。在全新环境运行元调优前，还需先生成 VSD4K 的 `psnr_map`（见下文）。
 
 ## 对官方代码的修改
 
@@ -163,14 +166,12 @@ bash src/meta_tuning_local.sh
 - `--pre_train` 加载元学习最佳权重（epoch 46）
 - `--dir_data` 指向 `data/VSD4K/lol_15s_1`
 - `--data_range 1-150/1-150`，对应 `is45s` 分段逻辑的 MG1
-- `--data_train DIV2K`，绕过 `DIV2K_PSNR` 对 `psnr_map` 的依赖
+- `--data_train DIV2K_PSNR`，使用 `psnr_map` 进行 PSNR 优先采样
 - `--batch_size 8`
 - `--p_mask 0.20`
 - `--dir_mask` 指向 `grad_mask/mask_lol.pt`
 
-**Smoke test 结果**：
-- `find_mask`：生成梯度掩码（筛选 20% 参数）
-- `grad_mask`：加载掩码微调，PSNR 32.588
+**已有 smoke test 结果**：MG1 的 `find_mask` 和 `grad_mask` 流程已跑通，PSNR 约 32.6。该次 smoke test 使用 `--data_train DIV2K` 均匀采样；脚本现已切换为 `DIV2K_PSNR`，尚待用新采样配置重新验证。
 
 ### 3. `generate_lr.py`
 
@@ -182,11 +183,11 @@ bash src/meta_tuning_local.sh
 
 ## 已知问题与注意事项
 
-### 1. `psnr_map` 依赖
+### 1. `psnr_map` 生成与采样
 
-`--data_train DIV2K_PSNR` 需要在 `--dir_data/psnr_map/` 下预先生成 `{filename}_psnr_map.pt` 文件。生成逻辑在 `trainer_maml.py` 中，但受硬编码的 `I_frames` 字典限制，只对原作者的数据集生效。
+`--data_train DIV2K_PSNR` 需要在 `--dir_data/psnr_map/` 下提供 `{filename}_psnr_map.pt` 文件。当前已在 `trainer_maml.py` 的 I-frame 列表中加入 `lol_15s_1` 的 1~495 帧支持，并通过 `--patchnet_test` 对整段视频运行映射生成流程。已生成 495 个文件，位于 `data/VSD4K/lol_15s_1/psnr_map/`。
 
-**当前解决方案**：元调优脚本使用 `--data_train DIV2K` 绕过此依赖。代价是无法使用论文的 PSNR 优先采样机制，采样退化为均匀采样。完整的 `psnr_map` 生成流程待补充。
+元调优脚本已改为 `--data_train DIV2K_PSNR`，以使用 PSNR 优先采样；但目前已验证的 smoke test 仍是此前的 `DIV2K` 均匀采样配置，地图采样配置还需单独跑通确认。
 
 ### 2. `is45s` 硬编码分段
 
@@ -216,8 +217,8 @@ WSL 可能会将 Windows Anaconda 路径追加到 Linux `PATH`，导致 CMake �
 
 ## 后续计划
 
-1. 扩展元调优至 MG1~MG3 多段
-2. 编写 `psnr_map` 生成脚本，运行论文原版 `DIV2K_PSNR` 流程
+1. 验证 `DIV2K_PSNR` 加载已生成地图的元调优 smoke test
+2. 扩展元调优至 MG1~MG3 多段
 3. 完整复现论文的 PSNR/SSIM 指标
 4. 整理复现报告
 
