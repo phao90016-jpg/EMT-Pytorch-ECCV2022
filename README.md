@@ -16,13 +16,13 @@
 | GPU | NVIDIA GeForce RTX 4060 Laptop 8GB |
 | CUDA | 12.1 |
 
-`requirements-lock.txt` 记录了主要环境依赖版本，可通过以下命令安装：
+`requirements-lock.txt` 锁定了当前的主要依赖版本，可通过以下命令安装：
 
 ```bash
 pip install -r requirements-lock.txt
 ```
 
-当前运行环境中还安装了训练所需的 `numba 0.68.0`、`tqdm 4.70.1`、`tensorboardX 2.6.5` 和 `h5py 3.16.0`。这些包目前未全部列入 `requirements-lock.txt`，新环境安装后应检查并补齐训练依赖。
+注意：训练还依赖 `numba`、`tqdm`、`tensorboardX` 和 `h5py`，目前这些包尚未全部列入锁文件；在新环境中运行前，请根据需要安装并确认版本。
 
 主要依赖版本：
 - numpy 1.26.4
@@ -40,124 +40,193 @@ pip install -r requirements-lock.txt
 - [x] 环境搭建（venv + PyTorch + CUDA）
 - [x] DIV2K 训练集/验证集下载与解压
 - [x] 从 HR 生成 x2 LR 图像（`generate_lr.py`）
-- [x] 修改 `src/meta_learning.sh` 适配本地路径与 8GB 显存
-- [x] 跑通 smoke test（`--epochs 2`，`--batch_size 8`，日志 PSNR 22.877）
-- [ ] 完整元学习训练（800 epochs）
-- [ ] 元调优阶段（需 VSD4K 数据）
-- [ ] 梯度掩码分析与结果评估
+- [x] 本地元学习脚本适配路径与 8GB 显存
+- [x] 元学习 smoke test（`--epochs 2`，PSNR 22.877）
+- [x] 完整元学习训练（50 epochs，最佳 PSNR 32.252 @epoch 46）
+- [x] VSD4K 数据集下载与解压（`lol_15s_1`，495 帧 HR + X2 LR）
+- [x] 元调优 smoke test（MG1 的 `find_mask` + `grad_mask` 跑通）
+- [ ] 元调优完整流程（MG1~MG4 多段）
+- [ ] 生成 `psnr_map`，运行论文原版 `DIV2K_PSNR` 采样流程
+- [ ] 结果评估与对比
 
 ## 目录结构
 
 ```text
 EMT-Pytorch-ECCV2022/
-├── src/                    # 核心代码
-│   ├── main.py             # 训练入口
-│   ├── option.py           # 参数定义
-│   ├── dataloader.py       # 数据加载
-│   ├── trainer_maml.py     # MAML 训练器
-│   ├── trainer_gradmask.py # 梯度掩码训练器
-│   ├── meta_learning.sh    # 元学习脚本（已适配本地路径）
-│   ├── meta_tuning.sh      # 元调优脚本（待适配）
+├── src/                              # 核心代码
+│   ├── main.py                       # 训练入口
+│   ├── option.py                     # 参数定义
+│   ├── dataloader.py                 # 数据加载
+│   ├── trainer_maml.py               # MAML 训练器
+│   ├── trainer_gradmask.py           # 梯度掩码训练器
+│   ├── meta_learning.sh              # 官方元学习脚本（保留）
+│   ├── meta_learning_local.sh        # 本地元学习脚本
+│   ├── meta_tuning.sh                # 官方元调优脚本（保留）
+│   ├── meta_tuning_local.sh          # 本地元调优脚本
 │   └── ...
-├── data/                   # 数据集（未纳入版本控制）
-│   └── DIV2K/
-│       ├── DIV2K_train_HR/
-│       ├── DIV2K_train_LR_bicubic/X2/
-│       └── DIV2K_valid_HR/
-├── experiment/             # 训练输出（未纳入版本控制）
-├── generate_lr.py          # 从 HR 生成 x2 LR 图像的脚本
-├── requirements-lock.txt   # 锁定依赖
+├── data/                             # 数据集（未纳入版本控制）
+│   ├── DIV2K/
+│   │   ├── DIV2K_train_HR/
+│   │   ├── DIV2K_train_LR_bicubic/X2/
+│   │   └── DIV2K_valid_HR/
+│   └── VSD4K/
+│       └── lol_15s_1/
+│           ├── DIV2K_train_HR/
+│           ├── DIV2K_train_LR_bicubic/X2|X3|X4/
+│           └── video/
+├── experiment/                       # 训练输出（未纳入版本控制）
+├── grad_mask/                        # 梯度掩码文件（未纳入版本控制）
+├── generate_lr.py                    # 从 HR 生成 x2 LR 图像的脚本
+├── requirements-lock.txt             # 锁定依赖
 └── .gitignore
 ```
 
 ## 数据准备
 
-1. 下载 DIV2K 数据集（HR 图像）：
-   - 训练集：`DIV2K_train_HR.zip`
-   - 验证集：`DIV2K_valid_HR.zip`
+### 1. DIV2K（元学习阶段）
 
-2. 解压到 `data/DIV2K/`，目录结构如下：
-   ```text
-   data/DIV2K/
-   ├── DIV2K_train_HR/        # 0001.png ~ 0800.png
-   └── DIV2K_valid_HR/        # 0801.png ~ 0900.png
-   ```
+下载 DIV2K HR 图像并解压到 `data/DIV2K/`：
 
-3. 生成 x2 LR 图像：
-   ```bash
-   python generate_lr.py
-   ```
-   执行后会在 `data/DIV2K/DIV2K_train_LR_bicubic/X2/` 下生成 `0001x2.png` ~ `0800x2.png`。此脚本使用 Pillow bicubic 缩放；若要严格复现官方评测结果，应使用官方 LR 数据或确认缩放实现与评测设置一致。
+```text
+data/DIV2K/
+├── DIV2K_train_HR/        # 0001.png ~ 0800.png
+└── DIV2K_valid_HR/        # 0801.png ~ 0900.png
+```
+
+生成 x2 LR 图像：
+
+```bash
+python generate_lr.py
+```
+
+执行后会在 `data/DIV2K/DIV2K_train_LR_bicubic/X2/` 下生成 `0001x2.png` ~ `0800x2.png`。该脚本使用 Pillow bicubic 缩放；若要严格复现官方评测结果，应使用官方 LR 数据或确认缩放实现与评测设置一致。
+
+### 2. VSD4K（元调优阶段）
+
+从 CaFM-Pytorch-ICCV2021 仓库获取 VSD4K 数据集，解压后放到 `data/VSD4K/`。
+
+本复现使用 `game_15s_1.zip`（内含 `lol_15s_1` 目录，495 帧），解压后的数据结构如下：
+
+```text
+data/VSD4K/lol_15s_1/
+├── DIV2K_train_HR/                    # 00001.png ~ 00495.png
+├── DIV2K_train_LR_bicubic/
+│   ├── X2/                            # 00001x2.png ~ 00495x2.png
+│   ├── X3/
+│   └── X4/
+└── video/
+    └── lol_15s_1080p_fps30_bv10.mp4
+```
 
 ## 快速开始
 
-1. 激活虚拟环境：
-   ```bash
-   cd ~/code/EMT-Pytorch-ECCV2022
-   source emt-env/bin/activate
-   ```
+### 1. 激活虚拟环境
 
-2. 运行 smoke test（2 epochs，batch size 8）：
-   ```bash
-   bash src/meta_learning.sh
-   ```
+```bash
+cd ~/code/EMT-Pytorch-ECCV2022
+source emt-env/bin/activate
+```
 
-3. 查看输出：
-   - 模型权重保存在 `experiment/local_maml_espcn_x2_p144_b8_smoke_e2/`
-   - 终端会打印每轮 PSNR
+### 2. 元学习训练
+
+```bash
+bash src/meta_learning_local.sh
+```
+
+### 3. 元调优
+
+```bash
+mkdir -p grad_mask
+bash src/meta_tuning_local.sh
+```
+
+本地脚本中的数据、预训练权重和输出路径按当前工作环境配置；若仓库路径或数据位置不同，请先修改 `src/meta_learning_local.sh` 和 `src/meta_tuning_local.sh` 中对应的绝对路径。元调优脚本当前对 MG1 执行 `find_mask` 和 `grad_mask` smoke test（各 2 epochs）。
 
 ## 对官方代码的修改
 
-### 1. `src/meta_learning.sh`
+### 1. `src/meta_learning_local.sh`
 
-为适配本地路径与 8GB 显存，做了以下修改：
+本地元学习脚本基于官方 `meta_learning.sh` 修改：
+
 - `--dir_data` 指向本地 `data/DIV2K`
-- `--batch_size` 从 `240` 改为 `8`
-- `--epochs` 从 `800` 改为 `2`（smoke test 用）
-- `--save` 使用本地 smoke test 实验名
-- 脚本会先切换到 `src/` 再启动，确保相对路径正确
+- `--batch_size 8`，适配 8GB 显存
+- `--epochs 50`，`--decay 30-45`
+- `--save` 指向本地实验目录 `local_maml_espcn_x2_p144_b8_e50`
+- 脚本开头切换到脚本所在目录，确保从其他目录运行时也能找到 `main.py`
 
-### 2. `generate_lr.py`
+**训练结果**：50 epochs，最佳 PSNR 32.252 @epoch 46。
+
+### 2. `src/meta_tuning_local.sh`
+
+本地元调优脚本基于官方 `meta_tuning.sh` 修改，分为 `find_mask` 和 `grad_mask` 两步：
+
+- `--pre_train` 加载元学习最佳权重（epoch 46）
+- `--dir_data` 指向 `data/VSD4K/lol_15s_1`
+- `--data_range 1-150/1-150`，对应 `is45s` 分段逻辑的 MG1
+- `--data_train DIV2K`，绕过 `DIV2K_PSNR` 对 `psnr_map` 的依赖
+- `--batch_size 8`
+- `--p_mask 0.20`
+- `--dir_mask` 指向 `grad_mask/mask_lol.pt`
+
+**Smoke test 结果**：
+- `find_mask`：生成梯度掩码（筛选 20% 参数）
+- `grad_mask`：加载掩码微调，PSNR 32.588
+
+### 3. `generate_lr.py`
 
 新增脚本，用于从 HR 图像生成 x2 LR 图像，避免下载官方 LR 压缩包：
-- 读取 `DIV2K_train_HR/*.png`
-- 使用 bicubic 下采样 2 倍
-- 保存为 `DIV2K_train_LR_bicubic/X2/{name}x2.png`
 
-### 3. `src/meta_learning_local.sh`
-本地复现脚本，基于官方 `meta_learning.sh` 修改：
-- `--dir_data` 指向本地 `data/DIV2K`
-- `--batch_size 8`（适配 8GB 显存）
-- `--epochs 50`，`--decay 30-45`
-- `--save` 指向 `experiment/local_maml_espcn_x2_p144_b8_e50`
-- 脚本开头加 `cd "$(dirname "$0")"`，确保任意目录运行都能找到 `main.py`
+- 读取 `DIV2K_train_HR/*.png`
+- 使用 Pillow bicubic 下采样 2 倍
+- 保存为 `DIV2K_train_LR_bicubic/X2/{name}x2.png`
 
 ## 已知问题与注意事项
 
-- **验证集读取**：当前代码在测试时仍读取 `DIV2K_train_HR` 的尾部数据，未使用 `DIV2K_valid_HR`。本次 smoke test 使用 `data_range 1-750/751-800`，测试范围是训练目录中的图像。若需评估真正的 DIV2K 验证集，需要调整 `src/data/div2k.py`。
-- **`--reset` 参数**：会删除同名输出目录，正式训练前请更换 `--save` 名称或移除该选项。
-- **`--decay 400-650`**：在 2-epoch smoke test 中不会触发学习率衰减。
-- **训练依赖**：`utility.py` 需要 `numba`。当前环境已安装，但它及 `tqdm`、`tensorboardX`、`h5py` 尚未全部纳入依赖锁文件。
-- **WSL 路径干扰**：如果从新终端运行，建议检查 `PATH` 中是否有 Windows Anaconda 路径干扰；避免无必要地修改全局 `PATH`。
+### 1. `psnr_map` 依赖
 
-## 复现进度
+`--data_train DIV2K_PSNR` 需要在 `--dir_data/psnr_map/` 下预先生成 `{filename}_psnr_map.pt` 文件。生成逻辑在 `trainer_maml.py` 中，但受硬编码的 `I_frames` 字典限制，只对原作者的数据集生效。
 
-- [x] 环境搭建（venv + PyTorch + CUDA）
-- [x] DIV2K 训练集/验证集下载与解压
-- [x] 从 HR 生成 x2 LR 图像（`generate_lr.py`）
-- [x] 修改 `src/meta_learning.sh` 适配本地路径与 8GB 显存
-- [x] 跑通 smoke test（`--epochs 2`，PSNR 22.877）
-- [x] 完整元学习训练（50 epochs，最佳 PSNR 32.252 @epoch 46）
-- [x] VSD4K 数据集下载与解压（`lol_15s_1`，495 帧 HR + X2 LR）
-- [ ] 元调优阶段（`meta_tuning`）
-- [ ] 梯度掩码分析与结果评估
+**当前解决方案**：元调优脚本使用 `--data_train DIV2K` 绕过此依赖。代价是无法使用论文的 PSNR 优先采样机制，采样退化为均匀采样。完整的 `psnr_map` 生成流程待补充。
+
+### 2. `is45s` 硬编码分段
+
+`--is45s` 在 `trainer_maml.py` 和 `trainer_gradmask.py` 中按每 150 帧一段处理：
+
+```text
+1-150    → flag 0 (MG1)
+151-300  → flag 1 (MG2)
+301-450  → flag 2 (MG3)
+451-600  → flag 3 (MG4)
+...
+```
+
+本复现的 `lol_15s_1` 只有 495 帧，可支持 MG1~MG3，MG4 只有 45 帧。目前只跑通了 MG1。
+
+### 3. `--reset` 参数
+
+该参数会删除同名输出目录。正式训练前请更换 `--save` 名称或移除该选项。
+
+### 4. WSL 路径干扰
+
+WSL 可能会将 Windows Anaconda 路径追加到 Linux `PATH`，导致 CMake 或 pip 找到错误的库。若遇到相关问题，请检查 `PATH` 并移除冲突路径。
+
+### 5. 双层 `experiment` 目录
+
+由于 `--save` 使用绝对路径，而代码内部又拼接了一层 `experiment/`，输出可能位于 `experiment/experiment/` 下。不影响使用，但路径较长。
+
+## 后续计划
+
+1. 扩展元调优至 MG1~MG3 多段
+2. 编写 `psnr_map` 生成脚本，运行论文原版 `DIV2K_PSNR` 流程
+3. 完整复现论文的 PSNR/SSIM 指标
+4. 整理复现报告
 
 ## 参考
 
 - 论文：[ECCV 2022] Efficient Meta-Tuning for Content-Aware Neural Video Delivery
 - 官方代码：https://github.com/Neural-video-delivery/EMT-Pytorch-ECCV2022
 - DIV2K 数据集：https://data.vision.ee.ethz.ch/cvl/DIV2K/
-- VSD4K 数据集（用于元调优）：可从 CaFM-Pytorch-ICCV2021 仓库获取
+- VSD4K 数据集（用于元调优）：可从 [CaFM-Pytorch-ICCV2021](https://github.com/Neural-video-delivery/CaFM-Pytorch-ICCV2021) 仓库获取
 
 ## 许可
 
