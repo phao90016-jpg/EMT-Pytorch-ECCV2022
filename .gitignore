@@ -1,0 +1,35 @@
+# 虚拟环境
+emt-env/
+venv/
+env/
+
+# 数据集
+data/
+*.zip
+
+# 训练输出与实验
+experiment/
+bin/
+*.pt
+*.pth
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# 依赖锁文件（保留，视情况注释）
+# requirements-lock.txt
