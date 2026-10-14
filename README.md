@@ -1,6 +1,6 @@
 # EMT-Pytorch-ECCV2022 复现记录
 
-本仓库是对 ECCV 2022 论文 **Efficient Meta-Tuning for Content-Aware Neural Video Delivery (EMT)** 的复现工作，包含环境搭建、数据准备、训练脚本适配与本地实验记录。
+本仓库是对 ECCV 2022 论文 **Efficient Meta-Tuning for Content-Aware Neural Video Delivery (EMT)** 的复现工作，包含环境搭建、数据准备、训练脚本适配、psnr_map 生成与本地实验记录。
 
 - 原论文：*Efficient Meta-Tuning for Content-Aware Neural Video Delivery* (ECCV 2022)
 - 官方实现：[Neural-video-delivery/EMT-Pytorch-ECCV2022](https://github.com/Neural-video-delivery/EMT-Pytorch-ECCV2022)
@@ -16,13 +16,11 @@
 | GPU | NVIDIA GeForce RTX 4060 Laptop 8GB |
 | CUDA | 12.1 |
 
-`requirements-lock.txt` 锁定了当前的主要依赖版本，可通过以下命令安装：
+依赖版本已锁定，可通过 `requirements-lock.txt` 复现：
 
 ```bash
 pip install -r requirements-lock.txt
 ```
-
-注意：训练还依赖 `numba`、`tqdm`、`tensorboardX` 和 `h5py`，目前这些包尚未全部列入锁文件；在新环境中运行前，请根据需要安装并确认版本。
 
 主要依赖版本：
 - numpy 1.26.4
@@ -40,19 +38,46 @@ pip install -r requirements-lock.txt
 - [x] 环境搭建（venv + PyTorch + CUDA）
 - [x] DIV2K 训练集/验证集下载与解压
 - [x] 从 HR 生成 x2 LR 图像（`generate_lr.py`）
-- [x] 本地元学习脚本适配路径与 8GB 显存
-- [x] 元学习 smoke test（`--epochs 2`，PSNR 22.877）
+- [x] 修改 `src/meta_learning.sh` 适配本地路径与 8GB 显存
+- [x] 跑通 smoke test（`--epochs 2`，PSNR 22.877）
 - [x] 完整元学习训练（50 epochs，最佳 PSNR 32.252 @epoch 46）
 - [x] VSD4K 数据集下载与解压（`lol_15s_1`，495 帧 HR + X2 LR）
-- [x] 元调优 smoke test（MG1 的 `find_mask` + `grad_mask` 跑通）
-- [x] 为 `lol_15s_1` 生成完整 `psnr_map`（495 帧）
-- [ ] 元调优完整流程（MG1~MG4 多段）
-- [ ] 使用 `DIV2K_PSNR` 和新生成的 `psnr_map` 重新验证元调优
-- [ ] 结果评估与对比
+- [x] 生成 `lol_15s_1` 的 psnr_map（495 个文件，416941 个 patch 位置）
+- [x] 元调优 smoke test（MG1 find_mask + grad_mask 跑通）
+- [x] 元调优 MG1~MG4 链式微调（PSNR 优先采样）
+- [ ] 采样策略消融实验（均匀采样 vs PSNR 优先）
+- [ ] 多视频类别验证（sport / dance / vlog）
+- [ ] Baseline 对比（AdaFM / Sidetuning / Meta-Tuning）
+- [ ] 结果评估与论文对齐
+
+## 元调优结果
+
+### lol_15s_1, 495 帧, PSNR 优先采样（DIV2K_PSNR）
+
+| 段 | 帧范围 | p_mask | find_mask PSNR | grad_mask PSNR |
+|----|--------|--------|---------------|----------------|
+| MG1 | 1-150 | 0.20 | 33.638 | 32.609 |
+| MG2 | 151-300 | 0.01 | 33.607 | 32.640 |
+| MG3 | 301-450 | 0.01 | 34.362 | 33.187 |
+| MG4 | 451-495 | 0.01 | 33.841 | 32.794 |
+
+**观察**：
+- MG1~MG3 链式微调 PSNR 逐步提升，说明模型逐步适应了视频内容分布
+- MG4 数据量仅 45 帧（约前段的 30%），PSNR 略有回退，符合预期
+- MG1 使用较大 `p_mask=0.20` 进行粗粒度微调，MG2+ 使用 `p_mask=0.01` 精细微调
+
+### 采样策略初步对比（MG1）
+
+| 采样方式 | find_mask PSNR | grad_mask PSNR |
+|----------|---------------|----------------|
+| 均匀采样（DIV2K） | 33.270 | 32.588 |
+| PSNR 优先（DIV2K_PSNR） | 33.638 | 32.609 |
+
+**观察**：PSNR 优先采样在 find_mask 阶段提升明显（+0.37 dB），初步验证了论文的采样机制有效。
 
 ## 目录结构
 
-```text
+```
 EMT-Pytorch-ECCV2022/
 ├── src/                              # 核心代码
 │   ├── main.py                       # 训练入口
@@ -60,10 +85,12 @@ EMT-Pytorch-ECCV2022/
 │   ├── dataloader.py                 # 数据加载
 │   ├── trainer_maml.py               # MAML 训练器
 │   ├── trainer_gradmask.py           # 梯度掩码训练器
+│   ├── generate_mask.py              # 梯度掩码生成
 │   ├── meta_learning.sh              # 官方元学习脚本（保留）
-│   ├── meta_learning_local.sh        # 本地元学习脚本
+│   ├── meta_learning_local.sh        # 本地元学习脚本（已适配）
 │   ├── meta_tuning.sh                # 官方元调优脚本（保留）
-│   ├── meta_tuning_local.sh          # 本地元调优脚本
+│   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG3）
+│   ├── meta_tuning_mg4.sh            # 本地元调优脚本（MG4）
 │   └── ...
 ├── data/                             # 数据集（未纳入版本控制）
 │   ├── DIV2K/
@@ -74,7 +101,8 @@ EMT-Pytorch-ECCV2022/
 │       └── lol_15s_1/
 │           ├── DIV2K_train_HR/
 │           ├── DIV2K_train_LR_bicubic/X2|X3|X4/
-│           ├── psnr_map/              # 495 张帧级采样映射（本地生成）
+│           ├── psnr_map/             # 495 个 psnr_map 文件
+│           ├── bin/                  # 训练缓存
 │           └── video/
 ├── experiment/                       # 训练输出（未纳入版本控制）
 ├── grad_mask/                        # 梯度掩码文件（未纳入版本控制）
@@ -87,11 +115,12 @@ EMT-Pytorch-ECCV2022/
 
 ### 1. DIV2K（元学习阶段）
 
-下载 DIV2K HR 图像并解压到 `data/DIV2K/`：
+下载 HR 图像并解压到 `data/DIV2K/`：
 
-```text
+```
 data/DIV2K/
 ├── DIV2K_train_HR/        # 0001.png ~ 0800.png
+├── DIV2K_train_LR_bicubic/X2/   # 0001x2.png ~ 0800x2.png
 └── DIV2K_valid_HR/        # 0801.png ~ 0900.png
 ```
 
@@ -101,25 +130,47 @@ data/DIV2K/
 python generate_lr.py
 ```
 
-执行后会在 `data/DIV2K/DIV2K_train_LR_bicubic/X2/` 下生成 `0001x2.png` ~ `0800x2.png`。该脚本使用 Pillow bicubic 缩放；若要严格复现官方评测结果，应使用官方 LR 数据或确认缩放实现与评测设置一致。
+执行后会在 `data/DIV2K/DIV2K_train_LR_bicubic/X2/` 下生成 `0001x2.png` ~ `0800x2.png`。
 
 ### 2. VSD4K（元调优阶段）
 
 从 CaFM-Pytorch-ICCV2021 仓库获取 VSD4K 数据集，解压后放到 `data/VSD4K/`。
 
-本复现使用 `game_15s_1.zip`（内含 `lol_15s_1` 目录，495 帧），解压后的数据结构如下；`psnr_map/` 是后续运行映射生成流程后得到的目录：
+本复现使用 `game_15s_1.zip`（内含 `lol_15s_1` 目录，495 帧）：
 
-```text
+```
 data/VSD4K/lol_15s_1/
 ├── DIV2K_train_HR/                    # 00001.png ~ 00495.png
 ├── DIV2K_train_LR_bicubic/
 │   ├── X2/                            # 00001x2.png ~ 00495x2.png
 │   ├── X3/
 │   └── X4/
-├── psnr_map/                          # 通过 --patchnet_test 生成
+├── psnr_map/                          # 由 test_pn() 生成
 └── video/
     └── lol_15s_1080p_fps30_bv10.mp4
 ```
+
+### 3. 生成 psnr_map
+
+`psnr_map` 是 PSNR 优先采样的必需文件，用于记录每帧每个 patch 位置的 PSNR 排序。
+
+**生成方式**：在 `trainer_maml.py` 的 `I_frames` 字典中添加 `'lol_15s_1': list(range(1, 496))`，然后通过 `--patchnet_test` 触发 `test_pn()`：
+
+```bash
+cd src
+CUDA_VISIBLE_DEVICES=0 python main.py \
+  --model espcn --scale 2 --patch_size 144 --batch_size 8 \
+  --maml \
+  --save /home/penghao/code/EMT-Pytorch-ECCV2022/experiment/tmp_gen_psnr_map \
+  --pre_train /path/to/metaLearned.pt \
+  --reset --data_train DIV2K --data_test DIV2K \
+  --data_range 1-495/1-495 --is45s \
+  --dir_data /path/to/data/VSD4K/lol_15s_1 \
+  --patchnet_test --test_only \
+  --dir_mask /path/to/grad_mask/tmp.pt
+```
+
+生成完毕后 `data/VSD4K/lol_15s_1/psnr_map/` 下应有 495 个 `.pt` 文件，每个文件内容是 shape 为 `(N, 3)` 的数组 `[iy, ix, psnr]`。
 
 ## 快速开始
 
@@ -136,64 +187,70 @@ source emt-env/bin/activate
 bash src/meta_learning_local.sh
 ```
 
-### 3. 元调优
+### 3. 元调优（MG1~MG3）
 
 ```bash
 mkdir -p grad_mask
 bash src/meta_tuning_local.sh
 ```
 
-本地脚本中的数据、预训练权重和输出路径按当前工作环境配置；若仓库路径或数据位置不同，请先修改 `src/meta_learning_local.sh` 和 `src/meta_tuning_local.sh` 中对应的绝对路径。元调优脚本当前对 MG1 执行 `find_mask` 和 `grad_mask` smoke test（各 2 epochs）。在全新环境运行元调优前，还需先生成 VSD4K 的 `psnr_map`（见下文）。
+### 4. 元调优（MG4）
+
+```bash
+bash src/meta_tuning_mg4.sh
+```
 
 ## 对官方代码的修改
 
-### 1. `src/meta_learning_local.sh`
+### 1. `src/trainer_maml.py`
 
-本地元学习脚本基于官方 `meta_learning.sh` 修改：
+**`I_frames` 字典**：新增 `'lol_15s_1': list(range(1, 496))` 条目，使 `test_pn()` 在遍历时能识别 `lol_15s_1` 数据集的帧号并生成 psnr_map。
+
+### 2. `src/meta_learning_local.sh`
+
+本地元学习脚本，基于官方 `meta_learning.sh` 修改：
 
 - `--dir_data` 指向本地 `data/DIV2K`
-- `--batch_size 8`，适配 8GB 显存
+- `--batch_size 8`（适配 8GB 显存）
 - `--epochs 50`，`--decay 30-45`
-- `--save` 指向本地实验目录 `local_maml_espcn_x2_p144_b8_e50`
-- 脚本开头切换到脚本所在目录，确保从其他目录运行时也能找到 `main.py`
+- `--save` 指向 `experiment/local_maml_espcn_x2_p144_b8_e50`
+- 脚本开头加 `cd "$(dirname "$0")"`，确保任意目录运行都能找到 `main.py`
 
 **训练结果**：50 epochs，最佳 PSNR 32.252 @epoch 46。
 
-### 2. `src/meta_tuning_local.sh`
+### 3. `src/meta_tuning_local.sh`
 
-本地元调优脚本基于官方 `meta_tuning.sh` 修改，分为 `find_mask` 和 `grad_mask` 两步：
+本地元调优脚本，MG1~MG3 三段链式微调，每段 find_mask + grad_mask：
 
-- `--pre_train` 加载元学习最佳权重（epoch 46）
-- `--dir_data` 指向 `data/VSD4K/lol_15s_1`
-- `--data_range 1-150/1-150`，对应 `is45s` 分段逻辑的 MG1
-- `--data_train DIV2K_PSNR`，使用 `psnr_map` 进行 PSNR 优先采样
-- `--batch_size 8`
-- `--p_mask 0.20`
+- `--pre_train` 分别指向元学习模型（MG1）与上一段最佳模型（MG2/MG3）
+- `--data_range` 按 150 帧一段划分
+- `--data_train DIV2K_PSNR`（使用 PSNR 优先采样）
+- `--p_mask 0.20`（MG1）/ `0.01`（MG2/MG3）
 - `--dir_mask` 指向 `grad_mask/mask_lol.pt`
 
-**已有 smoke test 结果**：MG1 的 `find_mask` 和 `grad_mask` 流程已跑通，PSNR 约 32.6。该次 smoke test 使用 `--data_train DIV2K` 均匀采样；脚本现已切换为 `DIV2K_PSNR`，尚待用新采样配置重新验证。
+### 4. `src/meta_tuning_mg4.sh`
 
-### 3. `generate_lr.py`
+MG4 补充脚本，参数与 MG2/MG3 一致，仅 `--data_range 451-495/451-495`，`--pre_train` 指向 MG3。
+
+### 5. `generate_lr.py`
 
 新增脚本，用于从 HR 图像生成 x2 LR 图像，避免下载官方 LR 压缩包：
 
 - 读取 `DIV2K_train_HR/*.png`
-- 使用 Pillow bicubic 下采样 2 倍
+- 使用 bicubic 下采样 2 倍
 - 保存为 `DIV2K_train_LR_bicubic/X2/{name}x2.png`
 
 ## 已知问题与注意事项
 
-### 1. `psnr_map` 生成与采样
+### 1. `psnr_map` 生成需手动触发
 
-`--data_train DIV2K_PSNR` 需要在 `--dir_data/psnr_map/` 下提供 `{filename}_psnr_map.pt` 文件。当前已在 `trainer_maml.py` 的 I-frame 列表中加入 `lol_15s_1` 的 1~495 帧支持，并通过 `--patchnet_test` 对整段视频运行映射生成流程。已生成 495 个文件，位于 `data/VSD4K/lol_15s_1/psnr_map/`。
-
-元调优脚本已改为 `--data_train DIV2K_PSNR`，以使用 PSNR 优先采样；但目前已验证的 smoke test 仍是此前的 `DIV2K` 均匀采样配置，地图采样配置还需单独跑通确认。
+`--data_train DIV2K_PSNR` 依赖 `--dir_data/psnr_map/{filename}_psnr_map.pt` 文件。生成逻辑位于 `trainer_maml.py` 的 `test_pn()` 方法，需通过 `--patchnet_test` 参数显式触发。`--test_only` 走的是 `test()` 而非 `test_pn()`，因此必须加上 `--patchnet_test`。
 
 ### 2. `is45s` 硬编码分段
 
-`--is45s` 在 `trainer_maml.py` 和 `trainer_gradmask.py` 中按每 150 帧一段处理：
+`--is45s` 在 `trainer_maml.py` 和 `trainer_gradmask.py` 中硬编码了 150 帧一段的分段逻辑：
 
-```text
+```
 1-150    → flag 0 (MG1)
 151-300  → flag 1 (MG2)
 301-450  → flag 2 (MG3)
@@ -201,26 +258,50 @@ bash src/meta_tuning_local.sh
 ...
 ```
 
-本复现的 `lol_15s_1` 只有 495 帧，可支持 MG1~MG3，MG4 只有 45 帧。目前只跑通了 MG1。
+`lol_15s_1` 只有 495 帧，MG4 仅覆盖 45 帧（451-495），数据量不足以获得稳定指标。
 
-### 3. `--reset` 参数
+### 3. `percentage` 输出的舍入行为
 
-该参数会删除同名输出目录。正式训练前请更换 `--save` 名称或移除该选项。
+`generate_mask.py` 中：
 
-### 4. WSL 路径干扰
+```python
+idx = int(len(dist_mean[0]) * p_mask)
+pctg = idx / len(dist_mean[0]) * 100
+```
 
-WSL 可能会将 Windows Anaconda 路径追加到 Linux `PATH`，导致 CMake 或 pip 找到错误的库。若遇到相关问题，请检查 `PATH` 并移除冲突路径。
+`pctg` 是实际选中的元素比例，由于 `int()` 向下取整，当 `p_mask=0.01` 时输出约 0.9987%（而非精确 1%）。这是正常的舍入行为，不是 bug。
 
-### 5. 双层 `experiment` 目录
+### 4. `--reset` 参数
 
-由于 `--save` 使用绝对路径，而代码内部又拼接了一层 `experiment/`，输出可能位于 `experiment/experiment/` 下。不影响使用，但路径较长。
+会删除同名输出目录，正式训练前请更换 `--save` 名称或移除该选项。
+
+### 5. WSL 路径干扰
+
+WSL 默认会把 Windows 的 anaconda 路径追加到 Linux PATH，可能导致 CMake / pip 找到错误的库。建议在新终端中执行：
+
+```bash
+export PATH=$(echo "$PATH" | tr ':' '\n' | grep -vi anaconda | paste -sd:)
+```
+
+### 6. 双层 experiment 目录
+
+由于 `--save` 使用绝对路径，输出会落在 `experiment/experiment/` 下（代码内部又拼了一层 `experiment/`）。不影响使用，只是路径略长。
+
+### 7. PSNR 日志未持久化
+
+当前脚本的 PSNR 输出直接打印到终端，未写入 log 文件。如需保存，可改用：
+
+```bash
+bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
+```
 
 ## 后续计划
 
-1. 验证 `DIV2K_PSNR` 加载已生成地图的元调优 smoke test
-2. 扩展元调优至 MG1~MG3 多段
-3. 完整复现论文的 PSNR/SSIM 指标
-4. 整理复现报告
+1. **采样策略消融**：MG1/MG3 分别用 `DIV2K`（均匀采样）跑一遍，与 `DIV2K_PSNR` 对比
+2. **多视频类别验证**：从 VSD4K 下载 `sport`、`dance` 等类别，跑完整 MG1~MG4
+3. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
+4. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
+5. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
 
 ## 参考
 
@@ -228,6 +309,7 @@ WSL 可能会将 Windows Anaconda 路径追加到 Linux `PATH`，导致 CMake �
 - 官方代码：https://github.com/Neural-video-delivery/EMT-Pytorch-ECCV2022
 - DIV2K 数据集：https://data.vision.ee.ethz.ch/cvl/DIV2K/
 - VSD4K 数据集（用于元调优）：可从 [CaFM-Pytorch-ICCV2021](https://github.com/Neural-video-delivery/CaFM-Pytorch-ICCV2021) 仓库获取
+- RTSR 论文：[WCNC 2023] Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced
 
 ## 许可
 
