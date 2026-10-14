@@ -45,14 +45,14 @@ pip install -r requirements-lock.txt
 - [x] 生成 `lol_15s_1` 的 psnr_map（495 个文件，416941 个 patch 位置）
 - [x] 元调优 smoke test（MG1 find_mask + grad_mask 跑通）
 - [x] 元调优 MG1~MG4 链式微调（PSNR 优先采样）
-- [ ] 采样策略消融实验（均匀采样 vs PSNR 优先）
+- [x] 采样策略消融实验（均匀采样 vs PSNR 优先）
 - [ ] 多视频类别验证（sport / dance / vlog）
 - [ ] Baseline 对比（AdaFM / Sidetuning / Meta-Tuning）
 - [ ] 结果评估与论文对齐
 
 ## 元调优结果
 
-### lol_15s_1, 495 帧, PSNR 优先采样（DIV2K_PSNR）
+### PSNR 优先采样（DIV2K_PSNR）完整结果
 
 | 段 | 帧范围 | p_mask | find_mask PSNR | grad_mask PSNR |
 |----|--------|--------|---------------|----------------|
@@ -66,14 +66,29 @@ pip install -r requirements-lock.txt
 - MG4 数据量仅 45 帧（约前段的 30%），PSNR 略有回退，符合预期
 - MG1 使用较大 `p_mask=0.20` 进行粗粒度微调，MG2+ 使用 `p_mask=0.01` 精细微调
 
-### 采样策略初步对比（MG1）
+### 采样策略消融实验（MG1~MG3）
 
-| 采样方式 | find_mask PSNR | grad_mask PSNR |
-|----------|---------------|----------------|
-| 均匀采样（DIV2K） | 33.270 | 32.588 |
-| PSNR 优先（DIV2K_PSNR） | 33.638 | 32.609 |
+| 段 | 帧范围 | p_mask | 采样方式 | find_mask PSNR | grad_mask PSNR |
+|----|--------|--------|----------|---------------|----------------|
+| MG1 | 1-150 | 0.20 | 均匀 (DIV2K) | 33.270 | 32.588 |
+| MG1 | 1-150 | 0.20 | PSNR 优先 (DIV2K_PSNR) | 33.638 | 32.609 |
+| MG2 | 151-300 | 0.01 | 均匀 (DIV2K) | 33.277 | 32.620 |
+| MG2 | 151-300 | 0.01 | PSNR 优先 (DIV2K_PSNR) | 33.607 | 32.640 |
+| MG3 | 301-450 | 0.01 | 均匀 (DIV2K) | 33.951 | 33.164 |
+| MG3 | 301-450 | 0.01 | PSNR 优先 (DIV2K_PSNR) | 34.362 | 33.187 |
 
-**观察**：PSNR 优先采样在 find_mask 阶段提升明显（+0.37 dB），初步验证了论文的采样机制有效。
+**grad_mask PSNR 提升汇总**：
+
+| 段 | 均匀采样 | PSNR 优先采样 | Δ (PSNR优先 - 均匀) |
+|----|----------|--------------|---------------------|
+| MG1 | 32.588 | 32.609 | +0.021 |
+| MG2 | 32.620 | 32.640 | +0.020 |
+| MG3 | 33.164 | 33.187 | +0.023 |
+
+**观察**：
+- PSNR 优先采样在每段均优于均匀采样，grad_mask PSNR 提升约 **0.02 dB**
+- 提升幅度虽然不大，但趋势一致，说明论文的采样机制在小规模实验下仍然有效
+- 由于本复现仅使用 2 epochs 微调，与论文的完整训练设置存在差异，绝对数值仅供参考
 
 ## 目录结构
 
@@ -91,6 +106,7 @@ EMT-Pytorch-ECCV2022/
 │   ├── meta_tuning.sh                # 官方元调优脚本（保留）
 │   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG3）
 │   ├── meta_tuning_mg4.sh            # 本地元调优脚本（MG4）
+│   ├── meta_tuning_uniform.sh        # 消融实验脚本（均匀采样）
 │   └── ...
 ├── data/                             # 数据集（未纳入版本控制）
 │   ├── DIV2K/
@@ -200,6 +216,12 @@ bash src/meta_tuning_local.sh
 bash src/meta_tuning_mg4.sh
 ```
 
+### 5. 采样策略消融实验
+
+```bash
+bash src/meta_tuning_uniform.sh 2>&1 | tee experiment/uniform_run.log
+```
+
 ## 对官方代码的修改
 
 ### 1. `src/trainer_maml.py`
@@ -232,7 +254,11 @@ bash src/meta_tuning_mg4.sh
 
 MG4 补充脚本，参数与 MG2/MG3 一致，仅 `--data_range 451-495/451-495`，`--pre_train` 指向 MG3。
 
-### 5. `generate_lr.py`
+### 5. `src/meta_tuning_uniform.sh`
+
+采样策略消融实验脚本，用 `--data_train DIV2K`（均匀采样）跑 MG1~MG3，与 `DIV2K_PSNR` 版本对比。输出目录后缀为 `_uniform`，mask 文件独立保存。
+
+### 6. `generate_lr.py`
 
 新增脚本，用于从 HR 图像生成 x2 LR 图像，避免下载官方 LR 压缩包：
 
@@ -297,11 +323,10 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 
 ## 后续计划
 
-1. **采样策略消融**：MG1/MG3 分别用 `DIV2K`（均匀采样）跑一遍，与 `DIV2K_PSNR` 对比
-2. **多视频类别验证**：从 VSD4K 下载 `sport`、`dance` 等类别，跑完整 MG1~MG4
-3. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
-4. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
-5. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
+1. **多视频类别验证**：从 VSD4K 下载 `sport`、`dance` 等类别，跑完整 MG1~MG4
+2. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
+3. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
+4. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
 
 ## 参考
 
