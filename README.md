@@ -16,22 +16,13 @@
 | GPU | NVIDIA GeForce RTX 4060 Laptop 8GB |
 | CUDA | 12.1 |
 
-依赖版本已锁定，可通过 `requirements-lock.txt` 复现：
+依赖版本已锁定，可通过 `requirements-lock.txt` 安装：
 
 ```bash
 pip install -r requirements-lock.txt
 ```
 
-主要依赖版本：
-- numpy 1.26.4
-- opencv-python 4.9.0.80
-- scikit-image 0.22.0
-- scipy 1.17.1
-- matplotlib 3.11.2
-- numba 0.68.0
-- tqdm 4.70.1
-- tensorboardX 2.6.5
-- h5py 3.16.0
+主要依赖版本：numpy 1.26.4、opencv-python 4.9.0.80、scikit-image 0.22.0、scipy 1.17.1、matplotlib 3.11.2、numba 0.68.0、tqdm 4.70.1、tensorboardX 2.6.5、h5py 3.16.0。
 
 ## 复现进度
 
@@ -47,8 +38,9 @@ pip install -r requirements-lock.txt
 - [x] 元调优 MG1~MG4 链式微调（PSNR 优先采样）
 - [x] 采样策略消融实验（均匀采样 vs PSNR 优先）
 - [x] 多视频类别验证（sport / dance，MG1~MG4）
-- [ ] vlog 扩展
-- [ ] Baseline 对比（AdaFM / Sidetuning / Meta-Tuning）
+- [x] Meta-Tuning baseline 对比
+- [ ] AdaFM baseline 对比（引用论文数值）
+- [ ] Sidetuning baseline 对比（引用论文数值）
 - [ ] 结果评估与论文对齐
 
 ## 元调优结果
@@ -110,6 +102,39 @@ sport 和 dance 均使用 495 帧视频数据、PSNR 优先采样及 2 epochs �
 - 提升幅度虽然不大，但趋势一致，说明论文的采样机制在小规模实验下仍然有效
 - 由于本复现仅使用 2 epochs 微调，与论文的完整训练设置存在差异，绝对数值仅供参考
 
+## Baseline 对比（lol_15s_1）
+
+### 本地复现结果
+
+| 方法 | 类型 | 微调参数量 | MG1 | MG2 | MG3 | MG4 |
+|------|------|-----------|-----|-----|-----|-----|
+| **EMT (本复现)** | 梯度掩码微调 | 1%~20% | 32.609 | 32.640 | 33.187 | 32.794 |
+| Meta-Tuning | 全模型微调 | 100% | 32.903 | 33.069 | 33.818 | 33.455 |
+
+**观察**：
+- Meta-Tuning 因微调全部参数，PSNR 略高于 EMT（约 +0.3 dB）
+- EMT 的优势在于**效率**：只更新 1%~20% 参数，梯度掩码训练时间显著缩短
+- 论文的核心 claim 是“高效元调优”，精度与效率的权衡是关键
+
+### 效率对比（MG1，lol_15s_1）
+
+| 方法 | 微调参数量 | 训练时间 | 相对加速 |
+|------|-----------|---------|---------|
+| Meta-Tuning | 100% | ~10s | 1× |
+| **EMT (梯度掩码)** | 1%~20% | ~4s | **~2.5×** |
+
+### 论文引用数值
+
+以下数据引自 EMT 论文补充材料 Table 4（不同数据集上的 PSNR 对比）：
+
+| 方法 | inter-45s | sport-45s | dance-45s |
+|------|-----------|-----------|-----------|
+| C₁₋ₙ (300 epochs, from scratch) | 38.95 | 46.03 | 43.47 |
+| C*ₚ₁₋ₙ (800 epochs, pretrained) | 39.45 | 46.84 | 43.09 |
+| **EMT (Ours)** | **39.56** | **46.41** | **44.59** |
+
+**注意**：AdaFM 和 Sidetuning 在本论文中的具体 PSNR 数值未在补充材料中单独列出，建议查阅论文正文 Table 2/3 或相关引用获取。
+
 ## 目录结构
 
 ```
@@ -124,11 +149,12 @@ EMT-Pytorch-ECCV2022/
 │   ├── meta_learning.sh              # 官方元学习脚本（保留）
 │   ├── meta_learning_local.sh        # 本地元学习脚本（已适配）
 │   ├── meta_tuning.sh                # 官方元调优脚本（保留）
-│   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG4）
+│   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG3）
 │   ├── meta_tuning_mg4.sh            # 本地元调优脚本（MG4）
 │   ├── meta_tuning_sport.sh          # sport 类别元调优（MG1~MG3）
 │   ├── meta_tuning_dance.sh          # dance 类别元调优（MG1~MG3）
 │   ├── meta_tuning_uniform.sh        # 消融实验脚本（均匀采样）
+│   ├── baseline_metatuning.sh        # Meta-Tuning baseline 脚本
 │   └── ...
 ├── data/                             # 数据集（未纳入版本控制）
 │   ├── DIV2K/
@@ -276,6 +302,14 @@ bash src/meta_tuning_dance.sh 2>&1 | tee experiment/dance_run.log
 
 两份脚本分别使用独立的输出目录和梯度 mask，运行 MG1~MG3。随后 MG4 从对应类别的 MG3 最佳模型继续，帧范围为 `451-495/451-495`；本次实验结果见上表。
 
+### 7. Baseline 对比
+
+运行 Meta-Tuning 全模型微调 baseline：
+
+```bash
+bash src/baseline_metatuning.sh 2>&1 | tee experiment/baseline_metatuning_full.log
+```
+
 ## 对官方代码的修改
 
 ### 1. `src/trainer_maml.py`
@@ -323,6 +357,19 @@ MG4 补充脚本，参数与 MG2/MG3 一致，仅 `--data_range 451-495/451-495`
 ### 7. `src/meta_tuning_sport.sh` 和 `src/meta_tuning_dance.sh`
 
 多视频类别元调优脚本，分别针对 sport 和 dance 运行 MG1~MG3，使用独立的 `psnr_map`、梯度 mask 和实验输出目录，避免覆盖 `lol_15s_1` 或其他类别的结果。
+
+### 8. `src/main.py`
+
+- 简化 Trainer 选择逻辑：`find_mask`/`grad_mask` 使用 `Trainer_gradmask`，其余使用 `Trainer_maml`
+- 修复训练循环缩进，确保所有分支都进入 `while not t.terminate()` 循环
+
+### 9. `src/option.py`
+
+- 删除重复的 `--adafm` 参数定义，避免参数重复注册
+
+### 10. `src/baseline_metatuning.sh`
+
+Meta-Tuning baseline 脚本，使用全模型微调，与 EMT 的梯度掩码微调结果进行对比。
 
 ## 已知问题与注意事项
 
@@ -381,9 +428,9 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 
 ## 后续计划
 
-1. **多视频类别验证**：扩展 vlog 等类别，并评估独立留出帧
-2. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
-3. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
+1. **AdaFM / Sidetuning 对比**：查阅论文正文 Table 2/3，摘录对应 PSNR 数值，填入对比表
+2. **SSIM / LPIPS 指标**：补充结构相似性和感知指标
+3. **vlog 扩展**：补充更多视频类别的验证
 4. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
 
 ## 参考

@@ -12,8 +12,10 @@ from option import args
 from trainer_maml import Trainer_maml
 from trainer_gradmask import Trainer_gradmask
 import pdb
+
 torch.manual_seed(args.seed)
 checkpoint = utility.checkpoint(args)
+
 
 def main():
     global model
@@ -24,24 +26,25 @@ def main():
         t.test()
     else:
         if checkpoint.ok:
-            #pdb.set_trace()
             loader = data.Data(args)
             _model = model.Model(args, checkpoint)
             print(_model.state_dict().keys())
             _loss = loss.Loss(args, checkpoint) if not args.test_only else None
-            
-            if args.find_mask:
+
+            if args.find_mask or args.grad_mask:
                 t = Trainer_gradmask(args, loader, _model, _loss, checkpoint)
-            elif args.maml:
+            else:
                 t = Trainer_maml(args, loader, _model, _loss, checkpoint)
-            
+
             if args.patchnet_test:
                 t.test_pn()
+
             while not t.terminate():
                 t.train()
                 t.test()
 
             checkpoint.done()
+
 
 if __name__ == '__main__':
     random.seed(0)
