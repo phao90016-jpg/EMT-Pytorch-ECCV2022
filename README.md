@@ -46,11 +46,14 @@ pip install -r requirements-lock.txt
 - [x] 元调优 smoke test（MG1 find_mask + grad_mask 跑通）
 - [x] 元调优 MG1~MG4 链式微调（PSNR 优先采样）
 - [x] 采样策略消融实验（均匀采样 vs PSNR 优先）
-- [ ] 多视频类别验证（sport / dance / vlog）
+- [x] 多视频类别验证（sport / dance，MG1~MG3）
+- [ ] 多视频类别 MG4 验证及 vlog 扩展
 - [ ] Baseline 对比（AdaFM / Sidetuning / Meta-Tuning）
 - [ ] 结果评估与论文对齐
 
 ## 元调优结果
+
+以下元调优 PSNR 为运行日志中 `[DIV2K x2]` 的评估值；脚本使用 `--data_test DIV2K`，因此它们不是在对应视频帧上直接计算的指标。
 
 ### PSNR 优先采样（DIV2K_PSNR）完整结果
 
@@ -65,6 +68,21 @@ pip install -r requirements-lock.txt
 - MG1~MG3 链式微调 PSNR 逐步提升，说明模型逐步适应了视频内容分布
 - MG4 数据量仅 45 帧（约前段的 30%），PSNR 略有回退，符合预期
 - MG1 使用较大 `p_mask=0.20` 进行粗粒度微调，MG2+ 使用 `p_mask=0.01` 精细微调
+
+### 多视频类别验证（MG1~MG3）
+
+sport 和 dance 均使用 495 帧视频数据、PSNR 优先采样及 2 epochs 微调。每段的 grad_mask 阶段以前一阶段的最佳模型为起点；MG1 从元学习模型开始。结果来自 `experiment/sport_run.log` 和 `experiment/dance_run.log`。
+
+| 类别 | 段 | 帧范围 | p_mask | find_mask PSNR | grad_mask PSNR |
+|------|----|--------|--------|----------------|----------------|
+| sport_15s_1 | MG1 | 1-150 | 0.20 | 44.433 | 43.383 |
+| sport_15s_1 | MG2 | 151-300 | 0.01 | 45.562 | 44.410 |
+| sport_15s_1 | MG3 | 301-450 | 0.01 | 44.098 | 42.708 |
+| dance_15s_1 | MG1 | 1-150 | 0.20 | 40.574 | 37.875 |
+| dance_15s_1 | MG2 | 151-300 | 0.01 | 40.001 | 37.288 |
+| dance_15s_1 | MG3 | 301-450 | 0.01 | 39.505 | 36.899 |
+
+这些日志值用于记录元调优过程中的 DIV2K 测试集表现，不应解读为不同视频内容上的直接画质对比。当前 sport 和 dance 的 MG4（451-495）尚未完成。
 
 ### 采样策略消融实验（MG1~MG3）
 
@@ -104,8 +122,10 @@ EMT-Pytorch-ECCV2022/
 │   ├── meta_learning.sh              # 官方元学习脚本（保留）
 │   ├── meta_learning_local.sh        # 本地元学习脚本（已适配）
 │   ├── meta_tuning.sh                # 官方元调优脚本（保留）
-│   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG3）
+│   ├── meta_tuning_local.sh          # 本地元调优脚本（MG1~MG4）
 │   ├── meta_tuning_mg4.sh            # 本地元调优脚本（MG4）
+│   ├── meta_tuning_sport.sh          # sport 类别元调优（MG1~MG3）
+│   ├── meta_tuning_dance.sh          # dance 类别元调优（MG1~MG3）
 │   ├── meta_tuning_uniform.sh        # 消融实验脚本（均匀采样）
 │   └── ...
 ├── data/                             # 数据集（未纳入版本控制）
@@ -114,12 +134,14 @@ EMT-Pytorch-ECCV2022/
 │   │   ├── DIV2K_train_LR_bicubic/X2/
 │   │   └── DIV2K_valid_HR/
 │   └── VSD4K/
-│       └── lol_15s_1/
-│           ├── DIV2K_train_HR/
-│           ├── DIV2K_train_LR_bicubic/X2|X3|X4/
-│           ├── psnr_map/             # 495 个 psnr_map 文件
-│           ├── bin/                  # 训练缓存
-│           └── video/
+│       ├── lol_15s_1/
+│       │   ├── DIV2K_train_HR/
+│       │   ├── DIV2K_train_LR_bicubic/X2|X3|X4/
+│       │   ├── psnr_map/             # 495 个 psnr_map 文件
+│       │   ├── bin/                  # 训练缓存
+│       │   └── video/
+│       ├── sport_15s_1/              # 同结构，含独立 psnr_map
+│       └── dance_15s_1/              # 同结构，含独立 psnr_map
 ├── experiment/                       # 训练输出（未纳入版本控制）
 ├── grad_mask/                        # 梯度掩码文件（未纳入版本控制）
 ├── generate_lr.py                    # 从 HR 生成 x2 LR 图像的脚本
@@ -222,11 +244,41 @@ bash src/meta_tuning_mg4.sh
 bash src/meta_tuning_uniform.sh 2>&1 | tee experiment/uniform_run.log
 ```
 
+### 6. sport / dance 多视频类别元调优
+
+sport 和 dance 数据目录分别为 `data/VSD4K/sport_15s_1/` 与 `data/VSD4K/dance_15s_1/`。每个目录需要包含 495 张 HR、对应的 X2 LR 帧，以及各自独立的 `psnr_map/`。`trainer_maml.py` 中的 `I_frames` 已为这两个数据集配置 1~495 帧。
+
+生成 dance 的 `psnr_map`（sport 已按相同流程生成）：
+
+```bash
+cd src
+CUDA_VISIBLE_DEVICES=0 python main.py \
+  --model espcn --scale 2 --patch_size 144 --batch_size 8 \
+  --maml \
+  --save ../experiment/tmp_gen_psnr_dance \
+  --pre_train ../experiment/experiment/local_maml_espcn_x2_p144_b8_e50/model/46/model_best.pt \
+  --reset --data_train DIV2K --data_test DIV2K \
+  --data_range 1-495/1-495 --is45s \
+  --dir_data ../data/VSD4K/dance_15s_1 \
+  --patchnet_test --test_only \
+  --dir_mask ../grad_mask/tmp_dance.pt
+cd ..
+```
+
+确认 `data/VSD4K/dance_15s_1/psnr_map/` 下有 495 个 `_psnr_map.pt` 文件后，运行对应类别脚本：
+
+```bash
+bash src/meta_tuning_sport.sh 2>&1 | tee experiment/sport_run.log
+bash src/meta_tuning_dance.sh 2>&1 | tee experiment/dance_run.log
+```
+
+两份脚本分别使用独立的输出目录和梯度 mask。当前脚本仅运行 MG1~MG3；MG4 应在 MG3 完成后单独从该视频的 MG3 最佳模型继续，帧范围为 `451-495/451-495`。
+
 ## 对官方代码的修改
 
 ### 1. `src/trainer_maml.py`
 
-**`I_frames` 字典**：新增 `'lol_15s_1': list(range(1, 496))` 条目，使 `test_pn()` 在遍历时能识别 `lol_15s_1` 数据集的帧号并生成 psnr_map。
+**`I_frames` 字典**：新增 `lol_15s_1`、`sport_15s_1` 和 `dance_15s_1` 的 1~495 帧配置，使 `test_pn()` 能识别这些数据集并生成 `psnr_map`。
 
 ### 2. `src/meta_learning_local.sh`
 
@@ -242,12 +294,12 @@ bash src/meta_tuning_uniform.sh 2>&1 | tee experiment/uniform_run.log
 
 ### 3. `src/meta_tuning_local.sh`
 
-本地元调优脚本，MG1~MG3 三段链式微调，每段 find_mask + grad_mask：
+本地元调优脚本，MG1~MG4 链式微调，每段 find_mask + grad_mask：
 
-- `--pre_train` 分别指向元学习模型（MG1）与上一段最佳模型（MG2/MG3）
+- `--pre_train` 分别指向元学习模型（MG1）与上一段最佳模型（MG2~MG4）
 - `--data_range` 按 150 帧一段划分
 - `--data_train DIV2K_PSNR`（使用 PSNR 优先采样）
-- `--p_mask 0.20`（MG1）/ `0.01`（MG2/MG3）
+- `--p_mask 0.20`（MG1）/ `0.01`（MG2~MG4）
 - `--dir_mask` 指向 `grad_mask/mask_lol.pt`
 
 ### 4. `src/meta_tuning_mg4.sh`
@@ -265,6 +317,10 @@ MG4 补充脚本，参数与 MG2/MG3 一致，仅 `--data_range 451-495/451-495`
 - 读取 `DIV2K_train_HR/*.png`
 - 使用 bicubic 下采样 2 倍
 - 保存为 `DIV2K_train_LR_bicubic/X2/{name}x2.png`
+
+### 7. `src/meta_tuning_sport.sh` 和 `src/meta_tuning_dance.sh`
+
+多视频类别元调优脚本，分别针对 sport 和 dance 运行 MG1~MG3，使用独立的 `psnr_map`、梯度 mask 和实验输出目录，避免覆盖 `lol_15s_1` 或其他类别的结果。
 
 ## 已知问题与注意事项
 
@@ -323,7 +379,7 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 
 ## 后续计划
 
-1. **多视频类别验证**：从 VSD4K 下载 `sport`、`dance` 等类别，跑完整 MG1~MG4
+1. **多视频类别验证**：为 sport 和 dance 补跑 MG4（451~495 帧），再扩展 vlog 等类别
 2. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
 3. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
 4. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
