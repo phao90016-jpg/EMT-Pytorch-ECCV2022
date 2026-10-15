@@ -41,3 +41,14 @@ CUDA_VISIBLE_DEVICES=0 python main.py $COMMON \
   --save $EXP/local_tuning_dance_MG3 --pre_train $EXP/local_tuning_dance_MG2/model/model_best.pt --reset \
   --data_range 301-450/301-450 \
   --grad_mask --epochs 2 --test_every 100 --p_mask 0.01 --data_partion 0.20
+
+# MG4: 451-495, p_mask=0.01
+CUDA_VISIBLE_DEVICES=0 python main.py $COMMON \
+  --save $EXP/local_tuning_dance_MG4 --pre_train $EXP/local_tuning_dance_MG3/model/model_best.pt --reset \
+  --data_range 451-495/451-495 \
+  --find_mask --epochs 2 --test_every 1000 --p_mask 0.01 --data_partion 0.20
+
+CUDA_VISIBLE_DEVICES=0 python main.py $COMMON \
+  --save $EXP/local_tuning_dance_MG4 --pre_train $EXP/local_tuning_dance_MG3/model/model_best.pt --reset \
+  --data_range 451-495/451-495 \
+  --grad_mask --epochs 2 --test_every 100 --p_mask 0.01 --data_partion 0.20

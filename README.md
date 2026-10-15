@@ -46,14 +46,14 @@ pip install -r requirements-lock.txt
 - [x] 元调优 smoke test（MG1 find_mask + grad_mask 跑通）
 - [x] 元调优 MG1~MG4 链式微调（PSNR 优先采样）
 - [x] 采样策略消融实验（均匀采样 vs PSNR 优先）
-- [x] 多视频类别验证（sport / dance，MG1~MG3）
-- [ ] 多视频类别 MG4 验证及 vlog 扩展
+- [x] 多视频类别验证（sport / dance，MG1~MG4）
+- [ ] vlog 扩展
 - [ ] Baseline 对比（AdaFM / Sidetuning / Meta-Tuning）
 - [ ] 结果评估与论文对齐
 
 ## 元调优结果
 
-以下元调优 PSNR 为运行日志中 `[DIV2K x2]` 的评估值；脚本使用 `--data_test DIV2K`，因此它们不是在对应视频帧上直接计算的指标。
+以下元调优 PSNR 来自运行日志中标记为 `[DIV2K x2]` 的评估输出。`DIV2K` 是代码使用的数据集类名；元调优脚本将 `--dir_data` 指向各视频目录，因此这里的评估图像来自对应视频帧。每段训练与评估使用相同帧范围，故这些结果不是独立留出集指标。
 
 ### PSNR 优先采样（DIV2K_PSNR）完整结果
 
@@ -69,20 +69,22 @@ pip install -r requirements-lock.txt
 - MG4 数据量仅 45 帧（约前段的 30%），PSNR 略有回退，符合预期
 - MG1 使用较大 `p_mask=0.20` 进行粗粒度微调，MG2+ 使用 `p_mask=0.01` 精细微调
 
-### 多视频类别验证（MG1~MG3）
+### 多视频类别验证（MG1~MG4）
 
-sport 和 dance 均使用 495 帧视频数据、PSNR 优先采样及 2 epochs 微调。每段的 grad_mask 阶段以前一阶段的最佳模型为起点；MG1 从元学习模型开始。结果来自 `experiment/sport_run.log` 和 `experiment/dance_run.log`。
+sport 和 dance 均使用 495 帧视频数据、PSNR 优先采样及 2 epochs 微调。每段的 grad_mask 阶段以前一阶段的最佳模型为起点；MG1 从元学习模型开始。MG1~MG3 结果来自 `experiment/sport_run.log` 和 `experiment/dance_run.log`，MG4 结果来自 `experiment/sport_MG4_run.log` 和 `experiment/dance_MG4_run.log`。
 
 | 类别 | 段 | 帧范围 | p_mask | find_mask PSNR | grad_mask PSNR |
 |------|----|--------|--------|----------------|----------------|
 | sport_15s_1 | MG1 | 1-150 | 0.20 | 44.433 | 43.383 |
 | sport_15s_1 | MG2 | 151-300 | 0.01 | 45.562 | 44.410 |
 | sport_15s_1 | MG3 | 301-450 | 0.01 | 44.098 | 42.708 |
+| sport_15s_1 | MG4 | 451-495 | 0.01 | 44.723 | 43.454 |
 | dance_15s_1 | MG1 | 1-150 | 0.20 | 40.574 | 37.875 |
 | dance_15s_1 | MG2 | 151-300 | 0.01 | 40.001 | 37.288 |
 | dance_15s_1 | MG3 | 301-450 | 0.01 | 39.505 | 36.899 |
+| dance_15s_1 | MG4 | 451-495 | 0.01 | 39.886 | 37.287 |
 
-这些日志值用于记录元调优过程中的 DIV2K 测试集表现，不应解读为不同视频内容上的直接画质对比。当前 sport 和 dance 的 MG4（451-495）尚未完成。
+这些结果是在对应视频帧上的阶段内评估值，但各阶段评估范围同时参与了调优，不能视为独立留出集结果，也不宜直接据此比较类别画质。MG4 只有 45 帧，指标稳定性有限。
 
 ### 采样策略消融实验（MG1~MG3）
 
@@ -272,7 +274,7 @@ bash src/meta_tuning_sport.sh 2>&1 | tee experiment/sport_run.log
 bash src/meta_tuning_dance.sh 2>&1 | tee experiment/dance_run.log
 ```
 
-两份脚本分别使用独立的输出目录和梯度 mask。当前脚本仅运行 MG1~MG3；MG4 应在 MG3 完成后单独从该视频的 MG3 最佳模型继续，帧范围为 `451-495/451-495`。
+两份脚本分别使用独立的输出目录和梯度 mask，运行 MG1~MG3。随后 MG4 从对应类别的 MG3 最佳模型继续，帧范围为 `451-495/451-495`；本次实验结果见上表。
 
 ## 对官方代码的修改
 
@@ -379,7 +381,7 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 
 ## 后续计划
 
-1. **多视频类别验证**：为 sport 和 dance 补跑 MG4（451~495 帧），再扩展 vlog 等类别
+1. **多视频类别验证**：扩展 vlog 等类别，并评估独立留出帧
 2. **Baseline 对比**：运行 `trainer_adafm.py`、`trainer_sidetuning.py` 等对比方法
 3. **结果整理**：汇总 PSNR/SSIM/LPIPS 与传输流量指标，与论文对齐
 4. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
