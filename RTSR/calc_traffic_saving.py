@@ -1,5 +1,3 @@
-# 计算脚本
-python3 << 'EOF'
 # 假设参数（基于 RTSR 论文）
 duration = 60 # 仿真时间（秒）
 
