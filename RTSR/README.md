@@ -1,68 +1,110 @@
-# RTSR 网络层复现记录
+# RTSR 复现记录：网络层（Network Layer）
 
-本目录记录 WCNC 2023 论文《Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced》的网络层（Network Layer）复现工作。当前仿真的重点是验证 5G-Advanced 网络中的**分层 QoS 传输机制（hierarchical QoS transport）**：在无线资源受限并发生拥塞时，优先保障 XR 视频流，并让低优先级的超分辨率（Super-Resolution, SR）模型更新流承担更多丢包。
+本目录记录 WCNC 2023 论文《Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced》的网络层复现工作。
 
-## 仿真环境与前置条件
+当前重点：验证 5G-Advanced 网络中的**分层 QoS 传输机制**——无线资源受限并发生拥塞时，优先保障 XR 视频流，让低优先级的 SR 模型更新流承担更多丢包。
 
-- **操作系统：** WSL2 Ubuntu
-- **仿真工具：** ns-3.39 与 5G-LENA v2.5
-- **核心代码：** [`rtsr-simulation.cc`](rtsr-simulation.cc)，基于 5G-LENA 示例 `cttc-nr-traffic-3gpp-xr.cc` 修改
+> 算法层（EDSR M1/M2/M3、模型尺寸-PSNR）在 `EDSR-PyTorch/`，见 `TABLE1.md` 与 `DT_SWEEP.md`。
 
-运行前需准备好 ns-3.39 和 5G-LENA v2.5 的集成源码树，并满足其构建依赖。下文示例假设 NR 模块位于 ns-3 源码树的 `contrib/nr/` 目录。
+## 仿真环境
 
-## 核心代码修改
+- WSL2 Ubuntu 24.04
+- ns-3.39 + 5G-LENA v2.5，NR 模块位于 `ns-3.39/src/nr/`
+- 核心代码：[`rtsr-simulation.cc`](rtsr-simulation.cc)，改自 5G-LENA 示例 `cttc-nr-traffic-3gpp-xr.cc`
 
-- **双流架构（dual-stream architecture）：** 在 XR 视频流（LD video stream）的基础上，增加周期性 SR 模型流；每次发送 530 KiB，每 6 秒发送一次。
-- **分层 QoS 映射（hierarchical QoS mapping）：** XR 视频流映射到 `NGBR_LOW_LAT_EMBB`（高优先级承载）；SR 模型流映射到 `NGBR_VIDEO_TCP_DEFAULT`（低优先级承载）。
-- **拥塞环境模拟（congestion setup）：** 系统带宽限制为 5 MHz，并将 `LteRlcUm::MaxTxBufferSize` 设为 500 KiB，以形成受限缓存下的队列拥塞和丢包条件。
-- **QoS 调度器（QoS scheduler）：** 启用 `NrMacSchedulerTdmaQos`，配置 QoS 感知的逻辑信道调度算法，使高优先级承载在资源竞争时优先获得调度机会。
+## 代码修改点
 
-## 仿真结果与核心结论
+- **双流架构**：在 3GPP XR 业务（AR/VR/CG）之外，新增周期性 SR 模型流；单次 **530 个 1024 B 报文 = 530 KiB**，每 **6 秒**一次，目标端口 **5000**。
+- **分层 QoS 映射**：XR 业务 → `NGBR_LOW_LAT_EMBB`（5QI 80，高优先级）；SR 模型 → `NGBR_VIDEO_TCP_DEFAULT`（5QI 9，低优先级）。
+- **拥塞构造**：带宽 **5 MHz**，`LteRlcUm::MaxTxBufferSize` = **500 KiB**。
+- **QoS 调度器**：`NrMacSchedulerTdmaQos` + `NrMacSchedulerLcQos`。
+- **统计**：FlowMonitor 逐流输出 Tx/Rx 字节、吞吐、时延、抖动。
 
-以下为 60 秒仿真在 5 MHz 带宽、500 KiB RLC 缓冲区条件下记录的结果：
+## 当前仿真配置 vs 论文 Table III
 
-| 流类型 | 发送包数 | 接收包数 | 接收率 | 平均时延 | 说明 |
-| :--- | ---: | ---: | ---: | ---: | :--- |
-| **XR 视频流（高优先级）** | 3576 | 3500 | 97.9% | 451 ms | 丢包率较低，接收表现基本稳定 |
-| **SR 模型流（低优先级）** | 530 | 476 | 89.8% | 668 ms | 约 10% 丢包，平均时延较高 |
+| 项 | 当前值 | 论文 Table III |
+|---|---|---|
+| 小区数 / 站间距 | 1 个 gNB，无干扰 | 21 cell wraparound，ISD 200 m |
+| 带宽 / SCS | 5 MHz / 15 kHz（numerology 0） | 100 MHz / 30 kHz |
+| 载频 / 发射功率 | 4 GHz / 41 dBm | 4 GHz / 44 dBm per 20 MHz |
+| 天线 | 4×8 双极化，downtilt 0° | 64Tx/4Rx，MU-MIMO，downtilt 12° |
+| UE 数 | 1 AR + 1 VR + 1 CG | 按 UE 密度扫描（0–30/cell） |
+| UE 分布 | 静态 | 80% 室内 / 20% 室外，3 km/h |
+| 仿真时长 | 60 s | 1000 s |
+| PDB | 未实现（仅 RLC 缓冲上限） | 帧 10 ms / 模型 50 ms |
 
-**核心结论：** 在本次受限带宽与有限 RLC 缓冲区的测试条件下，低优先级 SR 流承担了更多丢包（约 10%），而高优先级 XR 视频流保持了 97% 以上的接收率。这与 RTSR 按网络状况自适应丢弃模型更新、为视频传输节省带宽的设计目标一致。该结果是特定拓扑、流量和仿真参数下的观测，不代表所有网络条件下都能绝对避免视频卡顿。
+## 已观测结果（60 s，5 MHz，500 KiB 缓冲，3 UE）
+
+| 流类型 | 发送 | 接收 | 投递率 | 平均时延 |
+|---|---:|---:|---:|---:|
+| XR 视频（高优先级） | 114.47 MB | 113.69 MB | **99.3%** | ~450 ms |
+| SR 模型（低优先级） | 15.95 MB | 14.31 MB | **89.7%** | ~668 ms |
+
+**结论**：低优先级 SR 流承担了约 10% 丢包，高优先级 XR 流保持 99% 以上——分层 QoS 的机制方向得到验证。
+
+**但这组数字不是论文的性能结论**：平均时延 450 ms 远超 10 ms PDB，说明处在深度饱和区间；它证明的是"优先级排序生效"，不是"系统容量提升"。论文 Fig.5/6 需要多小区、正常负载和帧级统计。
+
+## 流量节省（实测字节，2026-10-19 重新仿真）
+
+```bash
+cd RTSR
+python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
+```
+
+脚本解析 FlowMonitor 输出，按目标端口 5000 区分 SR 模型流；**没有日志就直接报错退出，不再编数字**。
+
+| 项（每 UE，60 s） | 数值 | 来源 |
+|---|---:|---|
+| LD 视频 发送 / 接收 | 38.16 / 37.90 MB（5.09 Mbps） | 实测 |
+| SR 模型 发送 | 5.32 MB（10 次更新 × 530 KiB） | 实测 |
+| **RTSR 合计** | **43.48 MB** | 实测 |
+| 传统 HD 基线 | 76.31 MB | **假设** LD×2（20 vs 10 Mbps） |
+| **流量节省** | **43.0%** | |
+
+更新周期敏感性（每 UE，模型 530 KiB，LD 实测 5.09 Mbps）：
+
+| ΔT | 模型开销 | 流量节省 |
+|---|---:|---:|
+| 2 s | 2.07 Mbps | 29.7% |
+| 6 s | 0.69 Mbps | **43.2%** |
+| 10 s | 0.41 Mbps | 45.9% |
+| 30 s | 0.14 Mbps | 48.6% |
+| 60 s | 0.07 Mbps | **49.3%** |
+
+**关键结论**：论文的"最高节省 50%"对应的是 **ΔT ≈ 30–60 s**；ΔT=6 s 时实测只有 **43%**，因为 0.69 Mbps 的模型开销占掉了 5.09 Mbps 视频预算的 **13.6%**。这正好回答了论文的 Q2（更新频率 vs LD 压缩度的折中）。
+
+⚠️ 两个必须声明的假设：① HD 流没有被仿真，是用 LD 乘 2 推的；② 每 UE 假设收到同一条流。
 
 ## 如何运行
 
-将 `NS3_DIR` 修改为本机 ns-3.39 与 5G-LENA v2.5 集成源码树的路径，并从本仓库根目录执行：
-
 ```bash
 set -euo pipefail
-
-NS3_DIR="/path/to/ns-3.39"
-SOURCE_FILE="$(pwd)/RTSR/rtsr-simulation.cc"
-TARGET_FILE="$NS3_DIR/contrib/nr/examples/cttc-nr-traffic-3gpp-xr.cc"
-
-test -f "$SOURCE_FILE"
-test -f "$NS3_DIR/ns3"
-test -f "$TARGET_FILE"
+NS3_DIR="/home/penghao/code/ns-allinone-3.39/ns-3.39"
+SOURCE_FILE="/path/to/EMT-Pytorch-ECCV2022/RTSR/rtsr-simulation.cc"
+TARGET_FILE="$NS3_DIR/src/nr/examples/cttc-nr-traffic-3gpp-xr.cc"
 
 cp "$SOURCE_FILE" "$TARGET_FILE"
 cd "$NS3_DIR"
-
-./ns3 configure --enable-examples
 ./ns3 build
-./ns3 run cttc-nr-traffic-3gpp-xr
+./ns3 run cttc-nr-traffic-3gpp-xr > /tmp/rtsr_ns3.log 2>&1
+cd /path/to/EMT-Pytorch-ECCV2022/RTSR
+python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 ```
 
-## 下一步计划
+## 与论文的差距
 
-- [ ] 使用 FlowMonitor 定量计算流量节省比例
-- [ ] 使用 PyTorch 训练并导出 RTSR 所需的轻量级 EDSR 模型
-- [ ] 开展算法层与网络层联合验证
+| 论文章节 | 缺什么 |
+|---|---|
+| Fig.2 / §II-C | 式(1)(3) 的 required-rate 调度（f=10 视频 / f=1 模型）未实现，只有承载级优先级 |
+| Table III | 21 cell / 100 MHz / 64T4R / 移动性 / 室内外比例 |
+| Fig.5 | 帧级 PDB 丢弃统计、满意 UE 比例、容量扫描（0–30 UE/cell，1000 s） |
+| Table II | 属算法层：需按 3–5 Mbps 编码 LD 视频并测 PSNR/VMAF |
 
-## 定量流量节省分析
+## 下一步
 
-基于我们训练出的 781 KB 轻量级 SR 模型，在 60 秒仿真中（LD 视频 10 Mbps，每 6 秒发送一次模型）：
-
-- **传统方案 (20 Mbps HD)**：150.0 MB
-- **RTSR 方案 (10 Mbps LD + SR 模型)**：约 82.6 MB
-- **流量节省率**：约 **45%**
-
-*注：若考虑 ns-3 仿真中 SR 模型因低优先级产生的约 10% 丢包，实际传输流量还会更低，逼近论文宣称的 50% 流量节省指标。*
+- [x] 双流 + 分层 QoS 仿真环境
+- [x] SR 模型流周期性发送（530 KiB / 6 s）
+- [x] 流量节省改为解析 FlowMonitor 实测字节（per-UE 口径）
+- [x] 算法层 Table I（M1/M2/M3）
+- [ ] 多小区 + 帧级统计，复现 Fig.5/6
+- [ ] 式(1)-(3) required-rate 调度
