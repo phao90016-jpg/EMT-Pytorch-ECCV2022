@@ -108,3 +108,22 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 - [x] 算法层 Table I（M1/M2/M3）
 - [ ] 多小区 + 帧级统计，复现 Fig.5/6
 - [ ] 式(1)-(3) required-rate 调度
+
+## P1：算法层复现（2026-10-20）
+
+结果与代码分别在：
+
+- [`results/`](results/) —— TABLE1 / TABLE1_4K / TABLE2 / TABLE2_4K / DT_SWEEP / P1_REPORT
+- [`algorithm/`](algorithm/) —— EDSR 侧的工具、运行脚本与两处源码补丁
+
+| 实验 | 结果 |
+|---|---|
+| Table I（540p→1080p） | M1 33.057 / M2 35.702 / M3 39.216 dB |
+| Table I（1080p→2160p，干净 bicubic） | 44.506 / 45.367 / 46.303 dB |
+| Table I（1080p→2160p @5 Mbps） | 41.501 / 42.295 / 42.833 dB |
+| Table II（1080p→2160p，3–5 Mbps，含 VMAF） | PSNR 41.05–42.30，VMAF 88.61–90.99 |
+| 在线训练窗 60/180/400 帧 | 35.699 / 35.705 / 35.709 dB |
+
+**结论**：M2→M3 的每翻倍增益随任务难度单调下降（0.275 → 0.179 → 论文 0.075），
+"压缩退化使容量收益变平"得到验证；VMAF 在 5 Mbps 处为 90.99，论文 90.09。
+完整偏差声明见 `results/P1_REPORT.md` 第四节。

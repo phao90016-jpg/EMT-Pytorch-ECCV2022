@@ -1,0 +1,48 @@
+diff --git a/src/model/edsr.py b/src/model/edsr.py
+index 4ed986e..da18f39 100644
+--- a/src/model/edsr.py
++++ b/src/model/edsr.py
+@@ -8,7 +8,9 @@ url = {
+     'r16f64x4': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_baseline_x4-6b446fab.pt',
+     'r32f256x2': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x2-0edfb8a3.pt',
+     'r32f256x3': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x3-ea3ef2c6.pt',
+-    'r32f256x4': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x4-4f62e9ef.pt'
++    'r32f256x4': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x4-4f62e9ef.pt',
++    'r8f2x2': '',
++    'r8f32x2': ''
+ }
+ 
+ def make_model(args, parent=False):
+@@ -23,7 +25,7 @@ class EDSR(nn.Module):
+         kernel_size = 3 
+         scale = args.scale[0]
+         act = nn.ReLU(True)
+-        self.url = url['r{}f{}x{}'.format(n_resblocks, n_feats, scale)]
++        self.url = url.get('r{}f{}x{}'.format(n_resblocks, n_feats, scale), '')
+         self.sub_mean = common.MeanShift(args.rgb_range)
+         self.add_mean = common.MeanShift(args.rgb_range, sign=1)
+ 
+diff --git a/src/template.py b/src/template.py
+index 2508b86..4ed6e99 100644
+--- a/src/template.py
++++ b/src/template.py
+@@ -51,3 +51,19 @@ def set_template(args):
+         args.patch_size = 41
+         args.lr = 1e-1
+ 
++
++    # --- RTSR (WCNC 2023) Table I presets ---
++    if args.template.find('RTSR_M1') >= 0:
++        args.model = 'EDSR'
++        args.n_resblocks = 8
++        args.n_feats = 9
++
++    if args.template.find('RTSR_M2') >= 0:
++        args.model = 'EDSR'
++        args.n_resblocks = 8
++        args.n_feats = 26
++
++    if args.template.find('RTSR_M3') >= 0:
++        args.model = 'EDSR'
++        args.n_resblocks = 16
++        args.n_feats = 64
