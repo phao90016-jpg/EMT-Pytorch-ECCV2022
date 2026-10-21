@@ -129,3 +129,20 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 **结论**：M2→M3 的每翻倍增益随任务难度单调下降（0.275 → 0.179 → 论文 0.075），
 "压缩退化使容量收益变平"得到验证；VMAF 在 5 Mbps 处为 90.99，论文 90.09。
 完整偏差声明见 `results/P1_REPORT.md` 第四节。
+
+
+## P2：容量扫描（单小区）
+
+`capacity_sweep.py` 按 UE 密度重复运行仿真，解析 FlowMonitor 后计算每 UE 投递率、
+满意 UE 比例（投递率 >= 99.5%），结果见：
+
+- `capacity_sweep_summary.md` —— 5 MHz 与 100 MHz 的对照与结论
+- `capacity_sweep_5mhz.md` / `capacity_sweep_100mhz.md` —— 原始表
+- `capacity_sweep_{5,100}mhz.json` —— 结构化数据
+
+```bash
+python3 capacity_sweep.py --bandwidth 100 --numerology 1 --ues 1 2 3 --tag 100mhz
+```
+
+要点：5 MHz 在 3 个 UE 即饱和（344 ms、80% 满意），6 个 UE 崩溃；
+100 MHz 在 6 个 UE 仍 2 ms / 100%。单小区、无 wraparound，不能对论文 Fig.5 的绝对值。
