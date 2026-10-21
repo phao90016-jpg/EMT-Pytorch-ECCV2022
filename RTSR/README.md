@@ -1,5 +1,7 @@
 # RTSR 复现记录：网络层（Network Layer）
 
+> **总报告：[`RTSR_TOTAL_REPORT.md`](RTSR_TOTAL_REPORT.md)** —— 算法层 + 网络层的完整结果、结论与偏差声明。
+
 本目录记录 WCNC 2023 论文《Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced》的网络层复现工作。
 
 当前重点：验证 5G-Advanced 网络中的**分层 QoS 传输机制**——无线资源受限并发生拥塞时，优先保障 XR 视频流，让低优先级的 SR 模型更新流承担更多丢包。
