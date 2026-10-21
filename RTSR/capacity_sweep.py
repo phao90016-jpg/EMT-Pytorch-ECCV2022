@@ -24,16 +24,16 @@ NS3 = '/home/penghao/code/ns-allinone-3.39/ns-3.39'
 SATISFIED_RATIO = 0.995
 
 
-def run_one(per_type, bandwidth_mhz, numerology, app_duration):
+def run_one(per_type, bandwidth_mhz, numerology, app_duration, num_sites):
     program = ('cttc-nr-traffic-3gpp-xr --arUeNum={u} --vrUeNum={u} --cgUeNum={u} '
-               '--bandwidth={b}e6 --numerology={n} --appDuration={d}'
-               .format(u=per_type, b=bandwidth_mhz, n=numerology, d=app_duration))
+               '--bandwidth={b}e6 --numerology={n} --appDuration={d} --numSites={s}'
+               .format(u=per_type, b=bandwidth_mhz, n=numerology, d=app_duration, s=num_sites))
     proc = subprocess.run(['./ns3', 'run', program], cwd=NS3,
                           capture_output=True, text=True)
     return proc.stdout
 
 
-def summarise(text, per_type, pdb_ms):
+def summarise(text, per_type, pdb_ms, num_sites):
     tmp = '/tmp/capacity_run.txt'
     with open(tmp, 'w', encoding='utf-8') as handle:
         handle.write(text)
@@ -53,6 +53,7 @@ def summarise(text, per_type, pdb_ms):
         / float(len(video))
     return {
         'ues_per_cell': total_ues,
+        'num_sites': num_sites,
         'video_flows': len(video),
         'video_ratio_mean': sum(ratio(f) for f in video) / len(video),
         'video_delay_mean_ms': sum(f['delay_ms'] for f in video) / len(video),
@@ -70,6 +71,7 @@ def main():
     ap.add_argument('--app-duration', type=int, default=20000,
                     help='simulated milliseconds per run')
     ap.add_argument('--pdb-ms', type=float, default=10.0)
+    ap.add_argument('--num-sites', type=int, default=1)
     ap.add_argument('--ues', nargs='+', type=int, default=[1, 2, 3, 4, 5, 6],
                     help='UEs per XR type (AR/VR/CG); total = 3x this value')
     args = ap.parse_args()
@@ -77,8 +79,9 @@ def main():
     rows = []
     for per_type in args.ues:
         print('== {} UEs per type ({} total) =='.format(per_type, per_type * 3), flush=True)
-        text = run_one(per_type, args.bandwidth, args.numerology, args.app_duration)
-        row = summarise(text, per_type, args.pdb_ms)
+        text = run_one(per_type, args.bandwidth, args.numerology, args.app_duration,
+                       args.num_sites)
+        row = summarise(text, per_type, args.pdb_ms, args.num_sites)
         if row:
             rows.append(row)
             print('   video ratio {:.1%}, delay {:.0f} ms, satisfied {:.0%}'.format(
@@ -89,8 +92,8 @@ def main():
     out_json = os.path.join(HERE, 'capacity_sweep_{}.json'.format(suffix))
     json.dump(rows, open(out_json, 'w', encoding='utf-8'), indent=2)
 
-    lines = ['# RTSR 容量扫描（单小区，{:g} MHz，{:g} s）'.format(
-        args.bandwidth, args.app_duration / 1000.0), '',
+    lines = ['# RTSR 容量扫描（{} 小区，{:g} MHz，{:g} s）'.format(
+        args.num_sites, args.bandwidth, args.app_duration / 1000.0), '',
              '由 `capacity_sweep.py` 生成。每档 UE 数 = AR:VR:CG 各 N 个。',
              '满意度判据：该 UE 的视频流投递率 ≥ 99.5%（论文定义）。', '',
              '| UE 数/小区 | 视频投递率 | 平均时延 | SR 模型投递率 | 满意(投递率) | 满意(+PDB) |',

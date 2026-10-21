@@ -18,8 +18,10 @@
 #include "ns3/nr-mac-scheduler-lc-qos.h"
 #include "ns3/packet-sink.h"
 #include "ns3/point-to-point-module.h"
+#include "ns3/random-variable-stream.h"
 #include "ns3/xr-traffic-mixer-helper.h"
 
+#include <cmath>
 #include <vector>
 
 /**
@@ -165,6 +167,9 @@ main(int argc, char* argv[])
     bool isMx1 = true;
     bool useUdp = true;
     double distance = 450;
+    uint32_t numSites = 1;   // 1 = single cell, 7 = centre + one hex ring
+    double isd = 200;        // inter-site distance in metres
+    double ueRadius = 0;     // 0 = auto
     uint32_t rngRun = 1;
 
     CommandLine cmd(__FILE__);
@@ -188,6 +193,9 @@ main(int argc, char* argv[])
                  "be 1x1, i.e., 1 SDF to 1 DRB.",
                  isMx1);
     cmd.AddValue("rngRun", "Rng run random number.", rngRun);
+    cmd.AddValue("numSites", "Number of gNBs (1 = single cell, 7 = centre + hex ring)", numSites);
+    cmd.AddValue("isd", "Inter-site distance in metres", isd);
+    cmd.AddValue("ueRadius", "UE drop radius in m (0 = auto)", ueRadius);
     cmd.AddValue("appDuration", "Duration of the application in milliseconds.", appDuration);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
@@ -270,11 +278,18 @@ main(int argc, char* argv[])
     const double gNbHeight = 25;
     const double ueHeight = 1.5;
 
-    gNbNodes.Create(1);
+    gNbNodes.Create(numSites);
     ueNodes.Create(arUeNum + vrUeNum + cgUeNum);
 
     Ptr<ListPositionAllocator> bsPositionAlloc = CreateObject<ListPositionAllocator>();
     bsPositionAlloc->Add(Vector(0.0, 0.0, gNbHeight));
+    for (uint32_t site = 1; site < numSites; ++site)
+    {
+        // hex ring: sites 1..6 sit at the inter-site distance around the centre
+        double angle = 2.0 * M_PI * (site - 1) / 6.0;
+        bsPositionAlloc->Add(
+            Vector(isd * std::cos(angle), isd * std::sin(angle), gNbHeight));
+    }
     mobility.SetPositionAllocator(bsPositionAlloc);
     mobility.Install(gNbNodes);
 
@@ -283,6 +298,12 @@ main(int argc, char* argv[])
     ueDiscPositionAlloc->SetX(0.0);
     ueDiscPositionAlloc->SetY(0.0);
     ueDiscPositionAlloc->SetZ(ueHeight);
+    double radius = ueRadius > 0 ? ueRadius : (numSites > 1 ? isd : 1.0);
+    // RandomDiscPositionAllocator exposes the radius through the Rho attribute
+    Ptr<UniformRandomVariable> rho = CreateObject<UniformRandomVariable>();
+    rho->SetAttribute("Min", DoubleValue(0.0));
+    rho->SetAttribute("Max", DoubleValue(radius));
+    ueDiscPositionAlloc->SetAttribute("Rho", PointerValue(rho));
     mobility.SetPositionAllocator(ueDiscPositionAlloc);
 
     for (uint32_t i = 0; i < ueNodes.GetN(); i++)

@@ -31,7 +31,7 @@
 | Fig.2 双流框架 + 分层 QoS | ✅ 承载级实现 | `rtsr-simulation.cc`、本文件 §2.4 |
 | Fig.3 在线训练 / 更新周期 | 🟡 窗长扫描 | `results/DT_SWEEP.md` |
 | §II-C 式(1)–(3) required-rate 调度 | ❌ | — |
-| Table III + Fig.5/6（21 cell 容量） | 🟡 单小区容量扫描（5 MHz / 100 MHz） | `results/capacity_sweep_summary.md` |
+| Table III + Fig.5/6（21 cell 容量） | 🟡 单小区 + 7 站点多小区扫描 | `results/capacity_sweep_summary.md`、`results/multicell_summary.md` |
 
 ---
 
@@ -176,6 +176,24 @@
 - **容量拐点在 10–20 MHz 之间**（固定 9 UE）：10 MHz 掉一半、20 MHz 时延 36 ms 超标、40 MHz 达标；
 - 与论文"23 UE/cell"不矛盾：论文用 10–20 Mbps/UE 的 HD 视频，本仿真约 5 Mbps/UE。
 
+### 2.6 多小区（7 站点，含邻区干扰）
+
+新增 `--numSites` / `--isd` / `--ueRadius`：站点按六边形排布（中心 + 一圈 6 个，间距 ISD=200 m），
+UE 在簇内撒点并就近接入。多小区时 UE 半径 = ISD，7 个站点都有 UE、都发数据，干扰真实存在。
+
+| 场景 | 视频投递率 | 平均时延 | 满意(投递率) | 满意(+PDB) | SR 模型投递率 |
+|---|---:|---:|---:|---:|---:|
+| 1 小区，20 MHz | 64.9% | 797 ms | 4% | 0% | 65.7% |
+| **7 小区，20 MHz** | **94.2%** | **260 ms** | **56%** | 44% | 61.8% |
+| 1 小区，100 MHz | 100.0% | 2 ms | 100% | 100% | 65.7% |
+| 7 小区，100 MHz | 100.0% | 2 ms | 100% | 100% | 59.6% |
+
+- **多小区是净收益**：同样 15 个 UE，20 MHz 下 7 小区（94.2%/260 ms）远好于单小区（64.9%/797 ms），
+  因为就近接入后每小区只承担约 2.1 个 UE 的负载，容量增益远大于干扰损失；
+- **干扰只吃掉低优先级流**：100 MHz 下视频两场景都是 100%/2 ms，但 SR 模型投递率
+  从 65.7% 降到 59.6% —— 再次印证"牺牲模型保视频"的设计；
+- 这是 7 cell（非 21 cell），单次仿真约 9 分钟，未能做大范围扫描。
+
 ## 3. 结论（可直接引用）
 
 1. **轻量模型选型**：M1→M2→M3 单调提升，但"M3 相对 M2 收益极低"**只在任务足够难时成立**；压缩退化程度是决定性变量（0.275 → 0.179 → 0.075）。
@@ -184,7 +202,9 @@
 4. **内容感知 SR 有效**：540p 设置下专属模型在**一半码率**上比通用模型高 1.4–2.8 dB。
 5. **压缩的代价可量化**：同样是 4K 目标，LD 从"干净 bicubic"换成 3 Mbps 编码，M2 掉 **4.32 dB**；5 Mbps 掉 **3.07 dB**。
 6. **流量节省**：ΔT=6 s 实测 43.0%，ΔT=30–60 s 达 48.6–49.3%，与论文"最高 50%"一致。
-7. **容量拐点由带宽与单 UE 负载共同决定**：固定 9 UE（约 45 Mbps）时，拐点在 10–20 MHz
+7. **多小区是净收益**：20 MHz / 15 UE 下，7 小区 94.2%（260 ms）优于单小区 64.9%（797 ms）；
+   100 MHz 下两者视频都 100%，但 SR 模型投递率 65.7% → 59.6%，干扰先吃掉可牺牲的模型流。
+8. **容量拐点由带宽与单 UE 负载共同决定**：固定 9 UE（约 45 Mbps）时，拐点在 10–20 MHz
    之间（10 MHz 掉一半、20 MHz 时延 36 ms 超 PDB、40 MHz 才达标）；100 MHz 下 24 UE 视频
    仍 100%，但 SR 模型投递率已跌到 36.4% —— 分层 QoS 的"牺牲模型保视频"被定量观察到。
 
@@ -271,7 +291,8 @@ EMT-Pytorch-ECCV2022/RTSR/
 │   ├── TABLE1.md  TABLE1_4K.md
 │   ├── TABLE2.md  TABLE2_4K.md
 │   ├── DT_SWEEP.md
-│   ├── capacity_sweep_summary.md  capacity_sweep_{5,100}mhz.md
+│   ├── capacity_sweep_summary.md  multicell_summary.md
+│   ├── capacity_sweep_{5,100}mhz.md  capacity_sweep_{1site,7sites}*.md
 │   └── vmaf_results*.json
 └── algorithm/
     ├── README.md              工具与脚本说明
@@ -287,7 +308,7 @@ EMT-Pytorch-ECCV2022/RTSR/
 | 优先级 | 内容 | 估计 | 价值 |
 |---|---|---|---|
 | **P2** | 式(1)–(3) required-rate 调度写进 ns-3 | 1–2 天 | 补齐 §II-C |
-| **P2** | 21 cell wraparound + 帧级 PDB（当前只有单小区投递率近似） | 3–5 天 | 唯一还空的核心图（Fig.5/6） |
+| **P2** | 21 cell wraparound + 帧级 PDB（当前 7 cell，满意度仍用投递率近似） | 2–3 天 | Fig.5/6 的完整形态 |
 | — | 4K 的通用模型基线、4K 的 M1/M3 VMAF | 半天 | Table II 完整性 |
 | — | 感知损失/GAN 替换 L1，验证 VMAF 口径 | 1 天 | 解决"PSNR vs VMAF 排名相反"的问题 |
 
