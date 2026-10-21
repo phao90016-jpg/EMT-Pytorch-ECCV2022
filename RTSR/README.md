@@ -147,3 +147,13 @@ python3 capacity_sweep.py --bandwidth 100 --numerology 1 --ues 1 2 3 --tag 100mh
 
 要点：5 MHz 在 3 个 UE 即饱和（344 ms、80% 满意），6 个 UE 崩溃；
 100 MHz 在 6 个 UE 仍 2 ms / 100%。单小区、无 wraparound，不能对论文 Fig.5 的绝对值。
+
+## 补充材料（2026-10-21）
+
+| 文件 | 内容 |
+|---|---|
+| `results/latency.md` | 单帧推理时延（6 组：M1/M2/M3 × 1080p/2160p 输出） |
+| `results/seed_variance.md` | 3 个随机种子的方差检验 |
+| `results/fig4_snapshot.png` / `fig4_zoom.png` | 论文 Fig.4 的主观对比图 |
+| `RTSR_复现对照表.md` | 论文全部内容 ↔ 复现情况逐条对照 |
+| `答辩提纲.md` | 一页纸 + 7 个预设问答 |

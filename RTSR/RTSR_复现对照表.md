@@ -16,11 +16,11 @@
 | §II-A | 轻量 SR 模型 + **Table I** | ✅ | 100% |
 | §II-B | 在线训练 + **Fig.3** | 🟡 | 60% |
 | §II-C | 分层 QoS + **Fig.2** + **式(1)–(3)** | 🟡 | 65% |
-| §III-A | **Table II** + Fig.4 | ✅ Table II / ❌ Fig.4 | 90% |
+| §III-A | **Table II** + Fig.4 | ✅ 两者都完成 | 100% |
 | §III-B | **Table III** + **Fig.5** + **Fig.6** | 🟡 | 55% |
 | §IV 结论 | 50% 流量 / +40% 容量 / 23 UE | 🟡 前两项 ✅，容量绝对值 ❌ | 70% |
 
-**整体：约 82%**
+**整体：约 85%**
 
 ---
 
@@ -139,7 +139,10 @@
 
 ### 6.3 Fig.4 主观对比图
 
-**判定 ❌**：未做恢复帧与原始帧的视觉对比拼图（缺实拍素材与可视化步骤）。
+**判定 ✅**：`results/fig4_snapshot.png`（LD bicubic / RTSR / 原图三联）与
+`results/fig4_zoom.png`（2× 放大）。脚本 `algorithm/tools/make_fig4.py` 自动挑选纹理最丰富区域。
+
+示例（4K @3 Mbps，帧 00420）：**LD bicubic 34.63 dB → RTSR 36.34 dB**（全帧 38.64 → 41.31）。
 
 产物：`results/TABLE2.md`、`results/TABLE2_4K.md`、`results/vmaf_results*.json`
 
@@ -205,6 +208,7 @@
 | 流量节省 | 最高 50% | 43.0%（6 s）~ 49.3%（60 s） | 依赖 ΔT |
 | 容量 | 23 UE/cell | 未到拐点 | 单 UE 负载低 |
 | M2→M3 每翻倍 | 0.075 | 0.179 | 任务难度 |
+| 单帧推理（2160p 输出） | 论文未给 | 218.6 ms（M2，FP32 eager） | 未做图优化/量化 |
 
 ---
 
@@ -215,7 +219,6 @@
 | 式(1)–(3) required-rate 调度 | 需要 ADU 级细粒度调度器改造 | 1–2 天 |
 | 21 cell wraparound | 需要完整多站点拓扑与边界处理 | 2–3 天 |
 | 帧级 PDB / Fig.6 | 需要自定义 sink + 帧聚合逻辑 | 1 天 |
-| Fig.4 主观对比图 | 需要实拍素材与可视化 | 半天 |
 | TDD DDDSU、64T4R MU-MIMO、移动性、室内外比例 | 参数未完全对齐 | 1 天 |
 | +40% 容量、23 UE/cell | 依赖上面三项 | 3–5 天 |
 | 实拍 4K 素材 | YouTube 在本机不可达 | 需代理 |
@@ -231,4 +234,6 @@
 | 算法层表 | `results/TABLE1.md`、`TABLE1_4K.md`、`TABLE2.md`、`TABLE2_4K.md`、`DT_SWEEP.md` |
 | 网络层表 | `results/capacity_sweep_summary.md`、`multicell_summary.md`、`P0_REPORT.md` |
 | 阶段报告 | `results/P1_REPORT.md` |
+| 实时性 / 鲁棒性 | `results/latency.md`、`results/seed_variance.md` |
+| 主观对比图 | `results/fig4_snapshot.png`、`results/fig4_zoom.png` |
 | 代码 | `rtsr-simulation.cc`、`calc_traffic_saving.py`、`capacity_sweep.py`、`algorithm/` |

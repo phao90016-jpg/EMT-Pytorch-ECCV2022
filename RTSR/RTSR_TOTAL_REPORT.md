@@ -30,6 +30,9 @@
 | Table II（LD 码率 ↔ 质量） | ✅ 两套设置，含 VMAF | `results/TABLE2.md`、`results/TABLE2_4K.md` |
 | Fig.2 双流框架 + 分层 QoS | ✅ 承载级实现 | `rtsr-simulation.cc`、本文件 §2.4 |
 | Fig.3 在线训练 / 更新周期 | 🟡 窗长扫描 | `results/DT_SWEEP.md` |
+| Fig.4 主观对比 | ✅ 三联图 + 2× 放大 | `results/fig4_snapshot.png` |
+| 实时性（论文标题） | ✅ 6 组时延实测 | `results/latency.md` |
+| 随机种子鲁棒性 | ✅ 3 种子对照 | `results/seed_variance.md` |
 | §II-C 式(1)–(3) required-rate 调度 | ❌ | — |
 | Table III + Fig.5/6（21 cell 容量） | 🟡 单小区 + 7 站点多小区扫描 | `results/capacity_sweep_summary.md`、`results/multicell_summary.md` |
 
@@ -366,4 +369,6 @@ EMT-Pytorch-ECCV2022/RTSR/
 | 压缩代价（3 / 5 Mbps） | −4.32 / −3.07 dB |
 | 流量节省（ΔT 6 / 30 / 60 s） | 43.0 / 48.6 / 49.3 % |
 | XR / SR 投递率 | 99.3 / 89.7 % |
-| 单帧推理（M2, 1080p 输出） | ~68–93 ms |
+| 单帧推理（M2, 1080p 输出） | 52.8 ms（实测） |
+| 单帧推理（M2, 2160p 输出） | 218.6 ms（4.6 FPS） |
+| 种子波动（拥塞点） | ±2.4 pp |
