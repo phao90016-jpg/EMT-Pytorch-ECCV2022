@@ -153,6 +153,7 @@ main(int argc, char* argv[])
 {
     // set simulation time and mobility
     uint32_t appDuration = 60000;
+    uint32_t simTimeMs = 0;
     uint32_t appStartTimeMs = 400;
     uint16_t numerology = 0;
     uint16_t arUeNum = 1;
@@ -188,14 +189,21 @@ main(int argc, char* argv[])
                  isMx1);
     cmd.AddValue("rngRun", "Rng run random number.", rngRun);
     cmd.AddValue("appDuration", "Duration of the application in milliseconds.", appDuration);
+    cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
+                 simTimeMs);
     cmd.Parse(argc, argv);
+    if (simTimeMs == 0)
+    {
+        simTimeMs = appDuration;
+    }
+
 
     NS_ABORT_MSG_IF(appDuration < 1000, "The appDuration should be at least 1000ms.");
     NS_ABORT_MSG_IF(
         !vrUeNum && !arUeNum && !cgUeNum,
         "Activate at least one type of XR traffic by configuring the number of XR users");
 
-    uint32_t simTimeMs = 60000;
+    // simTimeMs defaults to appDuration when left at 0 (see cmd.Parse below)
 
     // Set simulation run number
     SeedManager::SetRun(rngRun);

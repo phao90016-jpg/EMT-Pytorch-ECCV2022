@@ -3,16 +3,72 @@
     "ues_per_cell": 3,
     "video_flows": 5,
     "video_ratio_mean": 1.0,
-    "video_delay_mean_ms": 1.642804,
-    "sr_ratio_mean": 0.9249056603773586,
-    "satisfied_ue_ratio": 1.0
+    "video_delay_mean_ms": 1.6425100000000001,
+    "sr_ratio_mean": 0.9247379454926625,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
   },
   {
     "ues_per_cell": 6,
     "video_flows": 10,
     "video_ratio_mean": 1.0,
-    "video_delay_mean_ms": 1.6625489999999998,
-    "sr_ratio_mean": 0.929496855345912,
-    "satisfied_ue_ratio": 1.0
+    "video_delay_mean_ms": 1.66281,
+    "sr_ratio_mean": 0.9276729559748428,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 9,
+    "video_flows": 15,
+    "video_ratio_mean": 0.9998866288402672,
+    "video_delay_mean_ms": 1.6879300000000002,
+    "sr_ratio_mean": 0.9259259259259259,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 12,
+    "video_flows": 20,
+    "video_ratio_mean": 0.999957669363592,
+    "video_delay_mean_ms": 1.7201895,
+    "sr_ratio_mean": 0.8878406708595388,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 15,
+    "video_flows": 25,
+    "video_ratio_mean": 0.9999657281068751,
+    "video_delay_mean_ms": 1.7759652,
+    "sr_ratio_mean": 0.6572746331236897,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 18,
+    "video_flows": 30,
+    "video_ratio_mean": 0.9998870218010093,
+    "video_delay_mean_ms": 1.8547013333333333,
+    "sr_ratio_mean": 0.5160027952480782,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 21,
+    "video_flows": 35,
+    "video_ratio_mean": 0.9999514378906991,
+    "video_delay_mean_ms": 2.1477888571428574,
+    "sr_ratio_mean": 0.4271039233303385,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
+  },
+  {
+    "ues_per_cell": 24,
+    "video_flows": 40,
+    "video_ratio_mean": 0.9999360475292487,
+    "video_delay_mean_ms": 2.1325742500000002,
+    "sr_ratio_mean": 0.3639937106918239,
+    "satisfied_ue_ratio": 1.0,
+    "satisfied_ue_ratio_pdb": 1.0
   }
 ]

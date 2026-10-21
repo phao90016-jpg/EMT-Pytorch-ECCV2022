@@ -2,10 +2,11 @@
   {
     "ues_per_cell": 3,
     "video_flows": 5,
-    "video_ratio_mean": 0.9954218969153548,
-    "video_delay_mean_ms": 344.059,
-    "sr_ratio_mean": 0.8972955974842768,
-    "satisfied_ue_ratio": 0.8
+    "video_ratio_mean": 0.9950853412867001,
+    "video_delay_mean_ms": 315.7024,
+    "sr_ratio_mean": 0.8974842767295598,
+    "satisfied_ue_ratio": 0.8,
+    "satisfied_ue_ratio_pdb": 0.0
   },
   {
     "ues_per_cell": 6,
@@ -13,7 +14,8 @@
     "video_ratio_mean": 0.0,
     "video_delay_mean_ms": 0.0,
     "sr_ratio_mean": 0.0,
-    "satisfied_ue_ratio": 0.0
+    "satisfied_ue_ratio": 0.0,
+    "satisfied_ue_ratio_pdb": 0.0
   },
   {
     "ues_per_cell": 9,
@@ -21,6 +23,7 @@
     "video_ratio_mean": 0.0,
     "video_delay_mean_ms": 0.0,
     "sr_ratio_mean": 0.0,
-    "satisfied_ue_ratio": 0.0
+    "satisfied_ue_ratio": 0.0,
+    "satisfied_ue_ratio_pdb": 0.0
   }
 ]
