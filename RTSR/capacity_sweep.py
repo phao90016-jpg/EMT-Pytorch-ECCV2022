@@ -24,16 +24,17 @@ NS3 = '/home/penghao/code/ns-allinone-3.39/ns-3.39'
 SATISFIED_RATIO = 0.995
 
 
-def run_one(per_type, bandwidth_mhz, numerology, app_duration, num_sites):
+def run_one(per_type, bandwidth_mhz, numerology, app_duration, num_sites, rng_run):
     program = ('cttc-nr-traffic-3gpp-xr --arUeNum={u} --vrUeNum={u} --cgUeNum={u} '
-               '--bandwidth={b}e6 --numerology={n} --appDuration={d} --numSites={s}'
-               .format(u=per_type, b=bandwidth_mhz, n=numerology, d=app_duration, s=num_sites))
+               '--bandwidth={b}e6 --numerology={n} --appDuration={d} --numSites={s} --rngRun={r}'
+               .format(u=per_type, b=bandwidth_mhz, n=numerology, d=app_duration,
+                       s=num_sites, r=rng_run))
     proc = subprocess.run(['./ns3', 'run', program], cwd=NS3,
                           capture_output=True, text=True)
     return proc.stdout
 
 
-def summarise(text, per_type, pdb_ms, num_sites):
+def summarise(text, per_type, pdb_ms, num_sites, rng_run):
     tmp = '/tmp/capacity_run.txt'
     with open(tmp, 'w', encoding='utf-8') as handle:
         handle.write(text)
@@ -54,6 +55,7 @@ def summarise(text, per_type, pdb_ms, num_sites):
     return {
         'ues_per_cell': total_ues,
         'num_sites': num_sites,
+        'rng_run': rng_run,
         'video_flows': len(video),
         'video_ratio_mean': sum(ratio(f) for f in video) / len(video),
         'video_delay_mean_ms': sum(f['delay_ms'] for f in video) / len(video),
@@ -72,6 +74,7 @@ def main():
                     help='simulated milliseconds per run')
     ap.add_argument('--pdb-ms', type=float, default=10.0)
     ap.add_argument('--num-sites', type=int, default=1)
+    ap.add_argument('--rng-run', type=int, default=1)
     ap.add_argument('--ues', nargs='+', type=int, default=[1, 2, 3, 4, 5, 6],
                     help='UEs per XR type (AR/VR/CG); total = 3x this value')
     args = ap.parse_args()
@@ -80,8 +83,8 @@ def main():
     for per_type in args.ues:
         print('== {} UEs per type ({} total) =='.format(per_type, per_type * 3), flush=True)
         text = run_one(per_type, args.bandwidth, args.numerology, args.app_duration,
-                       args.num_sites)
-        row = summarise(text, per_type, args.pdb_ms, args.num_sites)
+                       args.num_sites, args.rng_run)
+        row = summarise(text, per_type, args.pdb_ms, args.num_sites, args.rng_run)
         if row:
             rows.append(row)
             print('   video ratio {:.1%}, delay {:.0f} ms, satisfied {:.0%}'.format(

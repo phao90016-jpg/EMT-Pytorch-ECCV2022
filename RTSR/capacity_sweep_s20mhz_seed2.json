@@ -1,0 +1,13 @@
+[
+  {
+    "ues_per_cell": 15,
+    "num_sites": 1,
+    "rng_run": 2,
+    "video_flows": 25,
+    "video_ratio_mean": 0.6460070298835657,
+    "video_delay_mean_ms": 797.9746799999999,
+    "sr_ratio_mean": 0.6563941299790356,
+    "satisfied_ue_ratio": 0.04,
+    "satisfied_ue_ratio_pdb": 0.0
+  }
+]
