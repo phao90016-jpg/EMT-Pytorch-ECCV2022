@@ -4,7 +4,7 @@ import os
 import re
 
 R = '/home/penghao/code/EMT-Pytorch-ECCV2022/RTSR'
-FILES = ['答辩提纲.md', 'RTSR_复现对照表.md', 'RTSR_TOTAL_REPORT.md', 'README.md',
+FILES = ['答辩汇报.md', '答辩提纲.md', 'RTSR_复现对照表.md', 'RTSR_TOTAL_REPORT.md', 'README.md',
          'results/latency.md', 'results/seed_variance.md',
          'results/capacity_sweep_summary.md', 'results/multicell_summary.md']
 
