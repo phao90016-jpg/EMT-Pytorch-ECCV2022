@@ -324,23 +324,27 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 
 ```
 EMT-Pytorch-ECCV2022/RTSR/
-├── README.md                  网络层记录 + P1 摘要
-├── rtsr-simulation.cc         双流 + 分层 QoS 仿真
+├── README.md                  导航 + 网络层记录
+├── RTSR_TOTAL_REPORT.md       ★ 本文件：完整数据与偏差声明
+├── RTSR_复现对照表.md          ★ 论文逐条对照（完成度地图）
+├── 答辩提纲.md                 ★ 一页纸 + 7 个 Q&A
+├── 答辩汇报.md                 ★ 两篇论文的完整汇报
+├── check_consistency.py       文档数字一致性检查
+├── rtsr-simulation.cc         双流 + 分层 QoS + 多小区仿真
+├── capacity_sweep.py          容量/带宽/小区数扫描器
 ├── calc_traffic_saving.py     FlowMonitor 解析 + per-UE 流量账
-├── results/
-│   ├── P0_REPORT.md           网络层阶段报告
-│   ├── P1_REPORT.md           算法层阶段报告
-│   ├── TABLE1.md  TABLE1_4K.md
-│   ├── TABLE2.md  TABLE2_4K.md
+├── results/                   ── 交付数据
+│   ├── TABLE1.md  TABLE1_4K.md  TABLE2.md  TABLE2_4K.md
 │   ├── DT_SWEEP.md  latency.md  seed_variance.md
-│   ├── fig4_snapshot.png  fig4_zoom.png
 │   ├── capacity_sweep_summary.md  multicell_summary.md
-│   ├── capacity_sweep_{5,100}mhz.md  capacity_sweep_{1site,7sites}*.md
-│   └── vmaf_results*.json
-└── algorithm/
+│   ├── fig4_snapshot.png  fig4_zoom.png
+│   ├── vmaf_results.json  vmaf_results_4k.json
+│   ├── raw/                   30 份原始扫描输出（md + json）
+│   └── archive/               历史阶段报告 P0/P1（已被本文件取代）
+└── algorithm/                 ── 算法层代码
     ├── README.md              工具与脚本说明
     ├── patches/               对上游 EDSR 的两处改动
-    ├── tools/                 数据准备 / 汇总 / VMAF
+    ├── tools/                 数据准备 / 汇总 / VMAF（10 个）
     └── run_*.sh               六套实验的运行脚本
 ```
 

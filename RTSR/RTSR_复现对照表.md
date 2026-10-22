@@ -105,7 +105,7 @@
 | **式(2)(3) 加权最小化 Σ f_i R_i** | ❌ 未实现（用承载优先级近似 f=10 vs 1） | — |
 | 视频优先、模型可牺牲 | ✅ 定量观察到 | 24 UE 时 SR 模型 36.4% vs 视频 100% |
 
-产物：`results/P0_REPORT.md`、`README.md` §2.4
+产物：`RTSR_TOTAL_REPORT.md` §2.4、`README.md`
 
 ---
 
@@ -234,8 +234,8 @@
 | 总报告 | `RTSR_TOTAL_REPORT.md` |
 | 答辩材料 | `答辩提纲.md` |
 | 算法层表 | `results/TABLE1.md`、`TABLE1_4K.md`、`TABLE2.md`、`TABLE2_4K.md`、`DT_SWEEP.md` |
-| 网络层表 | `results/capacity_sweep_summary.md`、`multicell_summary.md`、`P0_REPORT.md` |
-| 阶段报告 | `results/P1_REPORT.md` |
+| 网络层表 | `results/capacity_sweep_summary.md`、`results/multicell_summary.md` |
+| 历史阶段报告 | `results/archive/P0_REPORT.md`、`results/archive/P1_REPORT.md` |
 | 实时性 / 鲁棒性 | `results/latency.md`、`results/seed_variance.md` |
 | 主观对比图 | `results/fig4_snapshot.png`、`results/fig4_zoom.png` |
 | 代码 | `rtsr-simulation.cc`、`calc_traffic_saving.py`、`capacity_sweep.py`、`algorithm/` |

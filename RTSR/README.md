@@ -117,7 +117,7 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 
 结果与代码分别在：
 
-- [`results/`](results/) —— TABLE1 / TABLE1_4K / TABLE2 / TABLE2_4K / DT_SWEEP / P1_REPORT
+- [`results/`](results/) —— 数据表与总结；原始扫描数据在 `results/raw/`，历史阶段报告在 `results/archive/`
 - [`algorithm/`](algorithm/) —— EDSR 侧的工具、运行脚本与两处源码补丁
 
 | 实验 | 结果 |
@@ -130,7 +130,7 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 
 **结论**：M2→M3 的每翻倍增益随任务难度单调下降（0.275 → 0.179 → 论文 0.075），
 "压缩退化使容量收益变平"得到验证；VMAF 在 5 Mbps 处为 90.99，论文 90.09。
-完整偏差声明见 `results/P1_REPORT.md` 第四节。
+完整偏差声明见 `RTSR_TOTAL_REPORT.md` 第五节。
 
 
 ## P2：容量扫描（单小区）

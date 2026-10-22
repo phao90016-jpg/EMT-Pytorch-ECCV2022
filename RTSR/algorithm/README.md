@@ -64,4 +64,4 @@ $PY tools/make_vmaf.py --pattern 'experiment_t2_4k_b{}' --data-dir 'dataset/4k_b
     --rates 3000 3500 4000 4500 5000 --out vmaf_results_4k.json
 ```
 
-结果表在 `../results/`，结论与偏差声明见 `../results/P1_REPORT.md`。
+结果表在 `../results/`，结论与偏差声明见 `../RTSR_TOTAL_REPORT.md`。

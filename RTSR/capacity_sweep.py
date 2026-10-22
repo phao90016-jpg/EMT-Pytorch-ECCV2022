@@ -92,7 +92,9 @@ def main():
                 row['satisfied_ue_ratio']), flush=True)
 
     suffix = args.tag or '{:g}mhz'.format(args.bandwidth)
-    out_json = os.path.join(HERE, 'capacity_sweep_{}.json'.format(suffix))
+    raw_dir = os.path.join(HERE, 'results', 'raw')
+    os.makedirs(raw_dir, exist_ok=True)
+    out_json = os.path.join(raw_dir, 'capacity_sweep_{}.json'.format(suffix))
     json.dump(rows, open(out_json, 'w', encoding='utf-8'), indent=2)
 
     lines = ['# RTSR 容量扫描（{} 小区，{:g} MHz，{:g} s）'.format(
@@ -109,7 +111,7 @@ def main():
     lines += ['', '注意：这是**单小区（{:g} MHz）**下的趋势，不是论文 Fig.5 的'.format(args.bandwidth),
               '21 cell wraparound 容量曲线；不同带宽下的绝对值不可直接比较。']
     md = '\n'.join(lines) + '\n'
-    open(os.path.join(HERE, 'capacity_sweep_{}.md'.format(suffix)), 'w', encoding='utf-8').write(md)
+    open(os.path.join(raw_dir, 'capacity_sweep_{}.md'.format(suffix)), 'w', encoding='utf-8').write(md)
     print(md)
 
 
