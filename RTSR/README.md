@@ -117,7 +117,7 @@ python3 calc_traffic_saving.py --ns3-log /tmp/rtsr_ns3.log --duration 60 --ues 3
 
 结果与代码分别在：
 
-- [`results/`](results/) —— 数据表与总结；原始扫描数据在 `results/raw/`，历史阶段报告在 `results/archive/`
+- [`results/`](results/) —— 数据表与总结；原始扫描数据在 `results/raw/`
 - [`algorithm/`](algorithm/) —— EDSR 侧的工具、运行脚本与两处源码补丁
 
 | 实验 | 结果 |

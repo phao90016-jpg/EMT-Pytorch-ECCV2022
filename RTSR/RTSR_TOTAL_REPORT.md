@@ -339,8 +339,7 @@ EMT-Pytorch-ECCV2022/RTSR/
 │   ├── capacity_sweep_summary.md  multicell_summary.md
 │   ├── fig4_snapshot.png  fig4_zoom.png
 │   ├── vmaf_results.json  vmaf_results_4k.json
-│   ├── raw/                   30 份原始扫描输出（md + json）
-│   └── archive/               历史阶段报告 P0/P1（已被本文件取代）
+│   └── raw/                   原始扫描输出（md + json，每组一份）
 └── algorithm/                 ── 算法层代码
     ├── README.md              工具与脚本说明
     ├── patches/               对上游 EDSR 的两处改动

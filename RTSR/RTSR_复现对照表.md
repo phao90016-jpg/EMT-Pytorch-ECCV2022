@@ -235,7 +235,6 @@
 | 答辩材料 | `答辩提纲.md` |
 | 算法层表 | `results/TABLE1.md`、`TABLE1_4K.md`、`TABLE2.md`、`TABLE2_4K.md`、`DT_SWEEP.md` |
 | 网络层表 | `results/capacity_sweep_summary.md`、`results/multicell_summary.md` |
-| 历史阶段报告 | `results/archive/P0_REPORT.md`、`results/archive/P1_REPORT.md` |
 | 实时性 / 鲁棒性 | `results/latency.md`、`results/seed_variance.md` |
 | 主观对比图 | `results/fig4_snapshot.png`、`results/fig4_zoom.png` |
 | 代码 | `rtsr-simulation.cc`、`calc_traffic_saving.py`、`capacity_sweep.py`、`algorithm/` |
