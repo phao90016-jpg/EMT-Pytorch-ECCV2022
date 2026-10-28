@@ -58,9 +58,9 @@ XR video  tx= 13326 pkts  delivery=100.0%  delay>PDB=  0.0%  bytes=  37.61 MB
 ```xml
 <FlowMonitor>
   <FlowStats>
-    <Flow flowId="1" txBytes="1907200" rxBytes="1906432"
-          txPackets="14900" rxPackets="14894" lostPackets="0"
-          delaySum="+6.67e+12ns" jitterSum="+7.26e+10ns">
+    <Flow flowId="1" txBytes="627200" rxBytes="627200"
+          txPackets="4900" rxPackets="4900" lostPackets="0"
+          delaySum="+8.23e+09ns" jitterSum="+5.85e+07ns">
       <delayHistogram nBins="...">
         <bin index="16" start="0.0016" width="0.0001" count="4715" />
         ...
