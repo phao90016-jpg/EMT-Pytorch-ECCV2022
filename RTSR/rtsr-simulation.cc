@@ -600,6 +600,11 @@ main(int argc, char* argv[])
 
     // Print per-flow statistics
     monitor->CheckForLostPackets();
+
+    // Dump the raw FlowMonitor trace: per-flow counters plus the probe records
+    // (one entry per packet), so the numbers printed below can be audited.
+    flowmonHelper.SerializeToXmlFile("rtsr-flowmon.xml", true, true);
+    std::cout << "\n[TRACE] FlowMonitor XML written to rtsr-flowmon.xml\n";
     Ptr<Ipv4FlowClassifier> classifier =
         DynamicCast<Ipv4FlowClassifier>(flowmonHelper.GetClassifier());
     FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
