@@ -3,6 +3,8 @@
 > **总报告：[`RTSR_TOTAL_REPORT.md`](RTSR_TOTAL_REPORT.md)** —— 算法层 + 网络层的完整结果、结论与偏差声明。
 > **逐条对照：[`RTSR_复现对照表.md`](RTSR_复现对照表.md)** —— 论文每一节/每张表做到了什么、差距在哪。
 > **答辩汇报：[`答辩汇报.md`](答辩汇报.md)** —— 两篇论文的完整汇报（EMT 有代码篇 + RTSR 重点复现篇）。
+> **施工图：[`论文复现任务步骤.md`](论文复现任务步骤.md)** —— 9 项决策 + P0–P7 阶段任务，后续按此推进。
+
 
 本目录记录 WCNC 2023 论文《Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced》的网络层复现工作。
 
