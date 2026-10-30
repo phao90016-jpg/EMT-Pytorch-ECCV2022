@@ -23,6 +23,9 @@
 #include "rtsr-frame-agents.h"
 
 #include <cmath>
+#include <cstring>
+#include <fstream>
+#include <map>
 #include <vector>
 
 /**
@@ -59,6 +62,78 @@ static uint32_t g_appDurationMs = 60000;
 // frame sinks must stop *before* Simulator::Stop, otherwise their stop
 // event never runs and the CSV/summary is lost
 static ApplicationContainer g_frameSinks;
+
+// ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
+static uint64_t g_rlcDrops = 0;
+static uint64_t g_rlcDroppedBytes = 0;
+static std::map<uint32_t, uint64_t> g_rlcDropsPerFrame;
+
+static void
+RlcDropCallback(Ptr<const Packet> p)
+{
+    ++g_rlcDrops;
+    g_rlcDroppedBytes += p->GetSize();
+    // The RLC SDU starts with the PDCP/IP headers, so scan the first bytes for the
+    // application frame magic instead of assuming a fixed offset.
+    const uint32_t scanLen = std::min<uint32_t>(p->GetSize(), 96);
+    if (scanLen >= FrameHeader::kSize)
+    {
+        uint8_t buf[96];
+        p->CopyData(buf, scanLen);
+        for (uint32_t off = 0; off + FrameHeader::kSize <= scanLen; ++off)
+        {
+            if (buf[off] == 0xC3 && buf[off + 1] == 0xA5) // little-endian 0xA5C3
+            {
+                uint8_t hdrBuf[FrameHeader::kSize];
+                std::memcpy(hdrBuf, buf + off, FrameHeader::kSize);
+                FrameHeader hdr;
+                if (hdr.ReadFrom(hdrBuf))
+                {
+                    ++g_rlcDropsPerFrame[hdr.frameId];
+                }
+                break;
+            }
+        }
+    }
+}
+
+// Connect the gNB RLC TxDrop trace once the DRB exists; retry until it does.
+static void
+TryConnectRlc()
+{
+    static uint32_t attempts = 0;
+    bool ok = Config::ConnectWithoutContextFailSafe(
+        "/NodeList/*/DeviceList/*/LteEnbRrc/UeMap/*/DataRadioBearerMap/*/LteRlc/TxDrop",
+        MakeCallback(&RlcDropCallback));
+    if (ok)
+    {
+        std::cout << "[RLC] TxDrop trace connected after " << (attempts + 1) << " attempt(s)"
+                  << std::endl;
+        return;
+    }
+    if (++attempts < 40)
+    {
+        Simulator::Schedule(MilliSeconds(100), &TryConnectRlc);
+    }
+    else
+    {
+        std::cout << "[RLC] WARNING: could not connect TxDrop trace" << std::endl;
+    }
+}
+
+static void
+DumpRlcDrops()
+{
+    std::ofstream out("rlc_drops.csv");
+    out << "frame_id,dropped_sdus\n";
+    for (const auto& kv : g_rlcDropsPerFrame)
+    {
+        out << kv.first << "," << kv.second << "\n";
+    }
+    std::cout << "[RLC] dropped SDUs=" << g_rlcDrops << " bytes=" << g_rlcDroppedBytes
+              << " frames_touched=" << g_rlcDropsPerFrame.size() << std::endl;
+}
+
 
 
 void
@@ -682,7 +757,20 @@ main(int argc, char* argv[])
     }
     // ======================================================
 
+    if (g_paperTraffic)
+    {
+        // The RLC entities only exist after the UE attaches and the DRB is created,
+        // so retry the wildcard connection until it succeeds (first success wins).
+        Simulator::Schedule(MilliSeconds(300), &TryConnectRlc);
+    }
+
     Simulator::Run();
+
+    if (g_paperTraffic)
+    {
+        DumpRlcDrops();
+    }
+
 
     // Print per-flow statistics
     monitor->CheckForLostPackets();
