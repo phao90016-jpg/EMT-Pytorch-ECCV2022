@@ -20,6 +20,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/random-variable-stream.h"
 #include "ns3/xr-traffic-mixer-helper.h"
+#include "rtsr-frame-agents.h"
 
 #include <cmath>
 #include <vector>
@@ -41,6 +42,24 @@
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("CttcNrTraffic3gppXr");
+
+// ---- paper traffic model mode (P0: frame-level instrumentation) ----
+static bool g_paperTraffic = false;
+static double g_fps = 60.0;
+static double g_videoBitrateMbps = 10.0;
+static double g_frameStdRatio = 0.105;
+static double g_frameMinRatio = 0.5;
+static double g_frameMaxRatio = 1.5;
+static double g_jitterStdMs = 2.0;
+static double g_jitterLimitMs = 4.0;
+static double g_framePdbMs = 10.0;
+static uint32_t g_mtu = 1400;
+static uint32_t g_appStartMs = 400;
+static uint32_t g_appDurationMs = 60000;
+// frame sinks must stop *before* Simulator::Stop, otherwise their stop
+// event never runs and the CSV/summary is lost
+static ApplicationContainer g_frameSinks;
+
 
 void
 WriteBytesSent(Ptr<TrafficGenerator> trafficGenerator,
@@ -101,8 +120,44 @@ ConfigureXrApp(NodeContainer& ueContainer,
                ApplicationContainer& clientApps,
                ApplicationContainer& pingApps)
 {
+
     XrTrafficMixerHelper trafficMixerHelper;
     Ipv4Address ipAddress = ueIpIface.GetAddress(i, 0);
+    if (g_paperTraffic)
+    {
+        // Paper model: one video stream per UE, frame-tagged packets.
+        Ptr<XrFrameSource> srcApp = CreateObject<XrFrameSource>();
+        srcApp->SetRemote(ipAddress, port);
+        srcApp->SetVideoBitrate(g_videoBitrateMbps);
+        srcApp->SetFps(g_fps);
+        srcApp->SetFrameSizeShape(g_frameStdRatio, g_frameMinRatio, g_frameMaxRatio);
+        srcApp->SetJitter(g_jitterStdMs, g_jitterLimitMs);
+        srcApp->SetMtu(g_mtu);
+        srcApp->SetStopTime(MilliSeconds(g_appStartMs + g_appDurationMs));
+        remoteHostContainer.Get(0)->AddApplication(srcApp);
+        clientApps.Add(srcApp);
+
+        Ptr<XrFrameSink> sinkApp = CreateObject<XrFrameSink>();
+        sinkApp->SetLocalPort(port);
+        sinkApp->SetMtu(g_mtu);
+        sinkApp->SetPdbMs(g_framePdbMs);
+        std::ostringstream csvName;
+        csvName << "frame_stats_port" << port << "_ue" << i << ".csv";
+        sinkApp->SetCsvPath(csvName.str());
+        std::ostringstream label;
+        label << "port" << port << "-ue" << i;
+        sinkApp->SetLabel(label.str());
+        ueContainer.Get(i)->AddApplication(sinkApp);
+        g_frameSinks.Add(sinkApp);
+
+        nrHelper->ActivateDedicatedEpsBearer(ueNetDev.Get(i), bearer, tft);
+
+        PingHelper pingPaper(ipAddress);
+        pingApps.Add(pingPaper.Install(remoteHostContainer));
+        return;
+    }
+
+
     trafficMixerHelper.ConfigureXr(config);
     auto it = XrPreconfig.find(config);
 
@@ -171,6 +226,7 @@ main(int argc, char* argv[])
     double isd = 200;        // inter-site distance in metres
     double ueRadius = 0;     // 0 = auto
     uint32_t rngRun = 1;
+    std::string trafficModel = "3gpp";
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -197,6 +253,18 @@ main(int argc, char* argv[])
     cmd.AddValue("isd", "Inter-site distance in metres", isd);
     cmd.AddValue("ueRadius", "UE drop radius in m (0 = auto)", ueRadius);
     cmd.AddValue("appDuration", "Duration of the application in milliseconds.", appDuration);
+    cmd.AddValue("trafficModel",
+                 "3gpp (default) or paper (10 Mbps / 60 FPS / truncated-Gaussian frames)",
+                 trafficModel);
+    cmd.AddValue("fps", "Video frame rate for trafficModel=paper", g_fps);
+    cmd.AddValue("videoBitrate", "Per-UE video bitrate in Mbps for trafficModel=paper", g_videoBitrateMbps);
+    cmd.AddValue("frameStd", "Frame-size std as a fraction of the mean", g_frameStdRatio);
+    cmd.AddValue("frameMin", "Frame-size min as a fraction of the mean", g_frameMinRatio);
+    cmd.AddValue("frameMax", "Frame-size max as a fraction of the mean", g_frameMaxRatio);
+    cmd.AddValue("jitterStd", "Frame-arrival jitter std in ms", g_jitterStdMs);
+    cmd.AddValue("jitterLimit", "Frame-arrival jitter truncation in ms", g_jitterLimitMs);
+    cmd.AddValue("framePdb", "Frame PDB in ms (trafficModel=paper)", g_framePdbMs);
+    cmd.AddValue("mtu", "Payload bytes per packet", g_mtu);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
@@ -204,6 +272,19 @@ main(int argc, char* argv[])
     {
         simTimeMs = appDuration;
     }
+
+    g_paperTraffic = (trafficModel == "paper");
+    g_appStartMs = appStartTimeMs;
+    g_appDurationMs = appDuration;
+    if (g_paperTraffic)
+    {
+        std::cout << "[MODE] paper traffic model: " << g_videoBitrateMbps << " Mbps, " << g_fps
+                  << " FPS, frame size " << g_frameMinRatio << "-" << g_frameMaxRatio
+                  << " x mean (std " << g_frameStdRatio << "), jitter N(0," << g_jitterStdMs
+                  << ") ms in [-" << g_jitterLimitMs << "," << g_jitterLimitMs << "], PDB "
+                  << g_framePdbMs << " ms" << std::endl;
+    }
+
 
 
     NS_ABORT_MSG_IF(appDuration < 1000, "The appDuration should be at least 1000ms.");
@@ -545,6 +626,11 @@ main(int argc, char* argv[])
     // start server and client apps
     serverApps.Start(MilliSeconds(appStartTimeMs));
     clientApps.Start(MilliSeconds(appStartTimeMs));
+    if (g_frameSinks.GetN() > 0)
+    {
+        g_frameSinks.Start(MilliSeconds(appStartTimeMs));
+        g_frameSinks.Stop(MilliSeconds(simTimeMs - 1));
+    }
     serverApps.Stop(MilliSeconds(simTimeMs));
     clientApps.Stop(MilliSeconds(appStartTimeMs + appDuration));
 
