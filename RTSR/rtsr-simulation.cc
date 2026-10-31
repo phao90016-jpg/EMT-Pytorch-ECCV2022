@@ -62,6 +62,7 @@ static uint32_t g_appDurationMs = 60000;
 // frame sinks must stop *before* Simulator::Stop, otherwise their stop
 // event never runs and the CSV/summary is lost
 static ApplicationContainer g_frameSinks;
+static NetDeviceContainer g_ueDevicesForPhy;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
@@ -157,9 +158,10 @@ OnRxPacketTraceUe(RxPacketTraceParams params)
     {
         ++g_phyCorrupt;
     }
-    if (params.m_sinr > -0.5)
+    // m_sinr is reported in linear scale; convert to dB for the report.
+    if (params.m_sinr > 0.0)
     {
-        g_sinrSum += params.m_sinr;
+        g_sinrSum += 10.0 * std::log10(params.m_sinr);
         ++g_sinrCount;
     }
 }
@@ -197,21 +199,36 @@ TryConnectMacPhy()
     bool mac = Config::ConnectWithoutContextFailSafe(
         "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrGnbMac/DlScheduling",
         MakeCallback(&OnDlScheduling));
-    static const char* phyPaths[] = {
-        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrUeSpectrumPhy/RxPacketTraceUe",
-        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrSpectrumPhy/RxPacketTraceUe",
-        "/NodeList/*/DeviceList/*/ComponentCarrierMapUe/*/NrUeSpectrumPhy/RxPacketTraceUe",
-        "/NodeList/*/DeviceList/*/NrUeSpectrumPhy/RxPacketTraceUe",
-    };
+    // The UE spectrum PHY is not reachable through Config paths, so connect it
+    // directly: NrUeNetDevice -> NrUePhy -> NrSpectrumPhy -> trace.
     bool phy = false;
-    for (const char* path : phyPaths)
+    uint32_t connected = 0;
+    for (uint32_t i = 0; i < g_ueDevicesForPhy.GetN(); ++i)
     {
-        if (Config::ConnectWithoutContextFailSafe(path, MakeCallback(&OnRxPacketTraceUe)))
+        Ptr<NrUeNetDevice> ueDev = DynamicCast<NrUeNetDevice>(g_ueDevicesForPhy.Get(i));
+        if (!ueDev)
         {
-            std::cout << "[PHY] connected via " << path << std::endl;
-            phy = true;
-            break;
+            continue;
         }
+        // GetPhy()/GetSpectrumPhy() assert on an out-of-range index instead of
+        // returning null, so only the configured single BWP / single stream is used.
+        Ptr<NrUePhy> uePhy = ueDev->GetPhy(0);
+        if (!uePhy)
+        {
+            continue;
+        }
+        Ptr<NrSpectrumPhy> specPhy = uePhy->GetSpectrumPhy(0);
+        if (specPhy &&
+            specPhy->TraceConnectWithoutContext("RxPacketTraceUe",
+                                                MakeCallback(&OnRxPacketTraceUe)))
+        {
+            ++connected;
+        }
+    }
+    phy = (connected > 0);
+    if (phy)
+    {
+        std::cout << "[PHY] connected " << connected << " RxPacketTraceUe source(s)" << std::endl;
     }
     if (mac && phy)
     {
@@ -333,6 +350,7 @@ ConfigureXrApp(NodeContainer& ueContainer,
         sinkApp->SetLabel(label.str());
         ueContainer.Get(i)->AddApplication(sinkApp);
         g_frameSinks.Add(sinkApp);
+        g_ueDevicesForPhy.Add(ueNetDev.Get(i));
 
         nrHelper->ActivateDedicatedEpsBearer(ueNetDev.Get(i), bearer, tft);
 
