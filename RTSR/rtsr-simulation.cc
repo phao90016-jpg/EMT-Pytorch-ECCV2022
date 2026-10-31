@@ -66,6 +66,7 @@ static ApplicationContainer g_frameSinks;
 static NetDeviceContainer g_ueDevicesForPhy;
 static NetDeviceContainer g_gnbDevices;
 static std::string g_tddPattern;
+static uint32_t g_pdcchSymbols = 0;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
@@ -479,6 +480,7 @@ main(int argc, char* argv[])
     uint32_t rngRun = 1;
     std::string trafficModel = "3gpp";
     std::string preset = "none";
+    uint32_t pdcchSymbols = 0;
     std::string tddPattern = "";
     uint32_t gnbRows = 4, gnbCols = 8;
     uint32_t ueRows = 1, ueCols = 1;
@@ -522,6 +524,8 @@ main(int argc, char* argv[])
     cmd.AddValue("jitterLimit", "Frame-arrival jitter truncation in ms", g_jitterLimitMs);
     cmd.AddValue("framePdb", "Frame PDB in ms (trafficModel=paper)", g_framePdbMs);
     cmd.AddValue("mtu", "Payload bytes per packet", g_mtu);
+    cmd.AddValue("pdcchSymbols", "DL control (PDCCH) symbols, 0 = default",
+                 pdcchSymbols);
     cmd.AddValue("tddPattern",
                  "TDD pattern, e.g. DDDSU or DL|DL|DL|S|UL (empty = default)",
                  tddPattern);
@@ -538,6 +542,7 @@ main(int argc, char* argv[])
     cmd.Parse(argc, argv);
 
     g_tddPattern = tddPattern;
+    g_pdcchSymbols = pdcchSymbols;
 
     if (preset == "paperTable3")
     {
@@ -554,6 +559,7 @@ main(int argc, char* argv[])
         downtiltDeg = 12.0;
         nfGnb = 5.0;
         nfUe = 9.0;
+        g_pdcchSymbols = 2;
         std::cout << "[PRESET] paperTable3 applied: 4.0 GHz / 100 MHz / 30 kHz / "
                      "ISD 200 m / 64T4R / 44 dBm / downtilt 12 / NF 5,9"
                   << std::endl;
@@ -614,6 +620,12 @@ main(int argc, char* argv[])
     // Use QoS-aware scheduling so the XR bearer (QCI 80) is served ahead of
     // the SR bearer (QCI 9) when radio resources are congested.
     nrHelper->SetSchedulerTypeId(TypeId::LookupByName("ns3::NrMacSchedulerTdmaQos"));
+    if (g_pdcchSymbols > 0)
+    {
+        nrHelper->SetSchedulerAttribute("DlCtrlSymbols",
+                                        UintegerValue(g_pdcchSymbols));
+        std::cout << "[PDCCH] DL control symbols = " << g_pdcchSymbols << std::endl;
+    }
     nrHelper->SetSchedulerAttribute("SchedLcAlgorithmType",
                                     TypeIdValue(NrMacSchedulerLcQos::GetTypeId()));
 
