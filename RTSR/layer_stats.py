@@ -116,7 +116,18 @@ def main():
     L.append("|---|---|---:|---|")
     L.append(f"| L1 应用 | 源端发帧 / 见到 / PDB 内 | {frames_sent} / {n_frames} / {n_in_pdb} | FSR **{fsr:.2f}%** |")
     L.append(f"| L1 应用 | 整帧全丢 | {fully_dropped} | sink 无记录 |")
+    # ---- P3: paper-strict FSR (frame waits > PDB at the BS buffer) ----
+    # An SDU is dropped by the RLC exactly when its head-of-line wait exceeds the
+    # PDB, so "any drop in this frame" IS "this frame waited too long at the BS".
+    dropped_frames = set(int(r["frame_id"]) for r in drops) if drops else set()
+    incomplete_ids = set(int(r["frame_id"]) for r in frames if r["complete"] != "1")
+    failed_ids = dropped_frames | incomplete_ids
+    fsr_paper = pct(frames_sent - len(failed_ids), frames_sent)
     L.append(f"| L1 应用 | 帧丢失率 | **{frame_loss:.2f}%** | 不完整帧占比 |")
+    L.append(f"| **P3 帧级** | **FSR（BS 等待口径）** | **{fsr_paper:.2f}%** | "
+             f"超时帧 {len(dropped_frames)} + 不完整帧 {len(incomplete_ids)} = "
+             f"{len(failed_ids)} / {frames_sent} |")
+    L.append(f"| P3 对照 | FSR（端到端口径） | {fsr:.2f}% | 含空口传输时间，偏严 |")
     L.append(f"| L2 IP | 视频包 tx / rx | {ip_tx} / {ip_rx} | 丢 {ip_lost}（**{l2_loss:.3f}%**） |")
     if model_ip:
         L.append(f"| L2 IP | 模型流 tx / rx | {model_ip['tx']} / {model_ip['rx']} | "

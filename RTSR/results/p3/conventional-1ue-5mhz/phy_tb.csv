@@ -1,0 +1,6 @@
+metric,value
+rx_tbs,920
+corrupt_tbs,0
+rx_bytes,17079571
+bler_percent,0
+mean_sinr_db,51.8719
