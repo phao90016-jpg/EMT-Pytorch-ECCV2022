@@ -65,6 +65,7 @@ static ApplicationContainer g_frameSinks;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
+static uint64_t g_rlcAttributed = 0;
 static uint64_t g_rlcDroppedBytes = 0;
 static std::map<uint32_t, uint64_t> g_rlcDropsPerFrame;
 
@@ -89,6 +90,7 @@ RlcDropCallback(Ptr<const Packet> p)
                 FrameHeader hdr;
                 if (hdr.ReadFrom(hdrBuf))
                 {
+                    ++g_rlcAttributed;
                     ++g_rlcDropsPerFrame[hdr.frameId];
                 }
                 break;
@@ -131,7 +133,8 @@ DumpRlcDrops()
         out << kv.first << "," << kv.second << "\n";
     }
     std::cout << "[RLC] dropped SDUs=" << g_rlcDrops << " bytes=" << g_rlcDroppedBytes
-              << " frames_touched=" << g_rlcDropsPerFrame.size() << std::endl;
+              << " attributed=" << g_rlcAttributed << " frames_touched="
+              << g_rlcDropsPerFrame.size() << std::endl;
 }
 
 
