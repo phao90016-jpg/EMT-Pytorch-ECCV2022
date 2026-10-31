@@ -26,6 +26,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <set>
 #include <vector>
 
 /**
@@ -67,6 +68,7 @@ static NetDeviceContainer g_ueDevicesForPhy;
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
 static uint64_t g_rlcAttributed = 0;
+static std::set<uint64_t> g_rlcDistinct;
 static uint64_t g_rlcDroppedBytes = 0;
 static std::map<uint32_t, uint64_t> g_rlcDropsPerFrame;
 
@@ -92,6 +94,8 @@ RlcDropCallback(Ptr<const Packet> p)
                 if (hdr.ReadFrom(hdrBuf))
                 {
                     ++g_rlcAttributed;
+                    // the same SDU can be reported more than once; keep unique keys
+                    g_rlcDistinct.insert((static_cast<uint64_t>(hdr.frameId) << 32) | hdr.seq);
                     ++g_rlcDropsPerFrame[hdr.frameId];
                 }
                 break;
@@ -255,9 +259,9 @@ DumpRlcDrops()
     {
         out << kv.first << "," << kv.second << "\n";
     }
-    std::cout << "[RLC] dropped SDUs=" << g_rlcDrops << " bytes=" << g_rlcDroppedBytes
-              << " attributed=" << g_rlcAttributed << " frames_touched="
-              << g_rlcDropsPerFrame.size() << std::endl;
+    std::cout << "[RLC] events=" << g_rlcDrops << " attributed=" << g_rlcAttributed
+              << " distinct_pkts=" << g_rlcDistinct.size()
+              << " frames_touched=" << g_rlcDropsPerFrame.size() << std::endl;
 }
 
 
