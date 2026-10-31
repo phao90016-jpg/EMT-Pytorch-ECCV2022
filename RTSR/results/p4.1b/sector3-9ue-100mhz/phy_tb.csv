@@ -1,0 +1,15 @@
+metric,value
+rx_tbs,7549
+corrupt_tbs,327
+rx_bytes,109104244
+bler_percent,4.3317
+mean_sinr_db,51.6084
+ue_1_rx_tbs,5183
+ue_1_bler_percent,2.27667
+ue_1_sinr_db,51.4539
+ue_2_rx_tbs,1368
+ue_2_bler_percent,15.2778
+ue_2_sinr_db,45.5132
+ue_3_rx_tbs,998
+ue_3_bler_percent,0
+ue_3_sinr_db,60.7659

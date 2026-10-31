@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <set>
 #include <vector>
@@ -65,6 +66,19 @@ static uint32_t g_appDurationMs = 60000;
 static ApplicationContainer g_frameSinks;
 static NetDeviceContainer g_ueDevicesForPhy;
 static NetDeviceContainer g_gnbDevices;
+// ---- P4.1b: 3-sector sites ----
+// One site hosts g_numSectors co-located gNBs whose antenna bearing angles are
+// spread evenly over 360 deg.  g_gnbDevSiteSector is indexed site-major, i.e.
+// g_gnbDevSiteSector[site * g_numSectors + sector] is the gNB of that sector.
+static bool g_sectorized = false;
+static uint32_t g_numSectors = 3;
+static std::vector<Vector> g_sitePos;
+static std::vector<Ptr<NetDevice>> g_gnbDevSiteSector;
+// The 3GPP channel model asserts that two devices never share one position, so the
+// sectors of a site are mounted a metre apart (0.5 % of the 200 m ISD, i.e. the
+// path loss / angles towards the UEs stay unchanged).  g_sitePos keeps the true
+// site centre and is what UE-to-sector assignment uses.
+static const double g_sectorOffsetM = 1.0;
 static std::string g_tddPattern;
 static uint32_t g_pdcchSymbols = 0;
 // conventional = 20 Mbps pure video, no SR model flow (Fig.5 baseline)
@@ -186,6 +200,19 @@ static uint64_t g_phyBytes = 0;
 static double g_sinrSum = 0.0;
 static uint32_t g_sinrCount = 0;
 
+// Per-UE PHY statistics: the network-wide mean hides whether the interference is
+// actually felt by some UEs, so keep a per-RNTI breakdown as well.
+struct UePhyStat
+{
+    uint64_t tb = 0;
+    uint64_t corrupt = 0;
+    double sinrSum = 0.0;
+    uint32_t sinrCount = 0;
+};
+// RNTIs are handed out per cell starting from 1, so the map key is
+// (cellId << 16) | rnti - a bare RNTI would merge UEs of different cells.
+static std::map<uint64_t, UePhyStat> g_uePhyStats;
+
 static void
 OnDlScheduling(NrSchedulingCallbackInfo info)
 {
@@ -216,6 +243,18 @@ OnRxPacketTraceUe(RxPacketTraceParams params)
         g_sinrSum += 10.0 * std::log10(params.m_sinr);
         ++g_sinrCount;
     }
+
+    UePhyStat& ueStat = g_uePhyStats[(params.m_cellId << 16) | params.m_rnti];
+    ++ueStat.tb;
+    if (params.m_corrupt)
+    {
+        ++ueStat.corrupt;
+    }
+    if (params.m_sinr > 0.0)
+    {
+        ueStat.sinrSum += 10.0 * std::log10(params.m_sinr);
+        ++ueStat.sinrCount;
+    }
 }
 
 static void
@@ -241,6 +280,22 @@ DumpMacPhy()
               << " retx=" << g_macRetx << std::endl;
     std::cout << "[PHY] rx TBs=" << g_phyTbs << " corrupt=" << g_phyCorrupt << " BLER=" << bler
               << "% meanSINR=" << meanSinr << " dB" << std::endl;
+
+    // Per-UE breakdown: SINR spread shows whether the scenario is interference
+    // limited (wide spread, low tail) or merely noise limited (all UEs high).
+    for (const auto& it : g_uePhyStats)
+    {
+        const UePhyStat& s = it.second;
+        const uint16_t cellId = it.first >> 16;
+        const uint16_t rnti = it.first & 0xffff;
+        const double ueSinr = s.sinrCount ? s.sinrSum / s.sinrCount : 0.0;
+        const double ueBler = s.tb ? 100.0 * (double)s.corrupt / s.tb : 0.0;
+        phy << "cell" << cellId << "_rnti" << rnti << "_rx_tbs," << s.tb << "\n";
+        phy << "cell" << cellId << "_rnti" << rnti << "_bler_percent," << ueBler << "\n";
+        phy << "cell" << cellId << "_rnti" << rnti << "_sinr_db," << ueSinr << "\n";
+        std::cout << "[PHY-UE] cell=" << cellId << " rnti=" << rnti << " TBs=" << s.tb
+                  << " BLER=" << ueBler << "% SINR=" << ueSinr << " dB" << std::endl;
+    }
 }
 
 // Try the MAC and PHY traces once the objects exist; retry a few times.
@@ -459,6 +514,112 @@ ConfigureXrApp(NodeContainer& ueContainer,
     clientApps.Add(currentUeClientApps);
 }
 
+// ---- P4.1b: sectorization helpers ----
+
+// The bearing angle lives in the element field pattern of the array, therefore
+// the direction of maximum element gain IS the measured boresight of the antenna.
+static double
+AntennaBearingDeg(const Ptr<Object>& antenna)
+{
+    Ptr<UniformPlanarArray> upa = DynamicCast<UniformPlanarArray>(antenna);
+    if (!upa)
+    {
+        return NAN;
+    }
+    double bestGain = -1.0;
+    double bestAz = NAN;
+    for (int az = -180; az < 180; ++az)
+    {
+        for (int inc = 60; inc <= 120; ++inc)
+        {
+            Angles a(az * M_PI / 180.0, inc * M_PI / 180.0);
+            const auto fieldPattern = upa->GetElementFieldPattern(a);
+            const double power =
+                fieldPattern.first * fieldPattern.first + fieldPattern.second * fieldPattern.second;
+            if (power > bestGain)
+            {
+                bestGain = power;
+                bestAz = az;
+            }
+        }
+    }
+    return bestAz;
+}
+
+static void
+ReportSectorBearings(uint32_t numSites, uint32_t sectorsPerSite)
+{
+    for (uint32_t site = 0; site < numSites; ++site)
+    {
+        for (uint32_t k = 0; k < sectorsPerSite; ++k)
+        {
+            Ptr<NetDevice> nd = g_gnbDevSiteSector[site * sectorsPerSite + k];
+            Ptr<NrGnbNetDevice> gnb = DynamicCast<NrGnbNetDevice>(nd);
+            NS_ABORT_MSG_IF(!gnb, "sector " << site << "/" << k << " is not a NrGnbNetDevice");
+            Ptr<NrGnbPhy> phy = gnb->GetPhy(0);
+            NS_ABORT_MSG_IF(!phy, "sector " << site << "/" << k << " has no NrGnbPhy");
+            const Ptr<Object> antenna = phy->GetSpectrumPhy(0)->GetAntenna();
+            std::cout << "[SECTOR] site " << site << " sector " << k << " cellId "
+                      << gnb->GetCellId() << " bearing(measured) " << AntennaBearingDeg(antenna)
+                      << " deg, nominal " << (360.0 * k / sectorsPerSite) << " deg" << std::endl;
+        }
+    }
+}
+
+// Co-located sectors all share one position, so "closest gNB" is ambiguous: pick
+// the sector whose boresight points closest to the UE azimuth instead.
+static void
+AttachBySector(const NetDeviceContainer& ueDevs,
+               const Ptr<NrHelper>& nrHelper,
+               uint32_t numSites,
+               uint32_t sectorsPerSite)
+{
+    std::vector<uint32_t> perSector(numSites * sectorsPerSite, 0);
+    for (uint32_t i = 0; i < ueDevs.GetN(); ++i)
+    {
+        Ptr<NetDevice> ueDev = ueDevs.Get(i);
+        const Vector uepos = ueDev->GetNode()->GetObject<MobilityModel>()->GetPosition();
+        uint32_t bestSite = 0;
+        double bestDist = std::numeric_limits<double>::infinity();
+        for (uint32_t site = 0; site < numSites; ++site)
+        {
+            const double d =
+                CalculateDistance(Vector(uepos.x, uepos.y, 0.0),
+                                  Vector(g_sitePos[site].x, g_sitePos[site].y, 0.0));
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestSite = site;
+            }
+        }
+        const double azimuth = std::atan2(uepos.y - g_sitePos[bestSite].y,
+                                          uepos.x - g_sitePos[bestSite].x);
+        uint32_t bestSector = 0;
+        double bestDelta = std::numeric_limits<double>::infinity();
+        for (uint32_t k = 0; k < sectorsPerSite; ++k)
+        {
+            const double bearing = 2.0 * M_PI * k / sectorsPerSite;
+            const double delta = std::fabs(WrapToPi(azimuth - bearing));
+            if (delta < bestDelta)
+            {
+                bestDelta = delta;
+                bestSector = k;
+            }
+        }
+        ++perSector[bestSite * sectorsPerSite + bestSector];
+        std::cout << "[ATTACH] ue node " << ueDev->GetNode()->GetId() << " -> site " << bestSite
+                  << " sector " << bestSector << " (ue azimuth "
+                  << (azimuth * 180.0 / M_PI) << " deg)" << std::endl;
+        nrHelper->AttachToEnb(ueDev, g_gnbDevSiteSector[bestSite * sectorsPerSite + bestSector]);
+    }
+    std::cout << "[ATTACH] UEs per sector (site*sectors+sector=count):";
+    for (uint32_t idx = 0; idx < perSector.size(); ++idx)
+    {
+        std::cout << " " << idx << "=" << perSector[idx];
+    }
+    std::cout << std::endl;
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -489,6 +650,8 @@ main(int argc, char* argv[])
     uint32_t ueRows = 1, ueCols = 1;
     double downtiltDeg = 0.0;
     double nfGnb = 5.0, nfUe = 7.0;
+    bool sectorized = false;
+    uint32_t numSectors = 3;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -542,12 +705,20 @@ main(int argc, char* argv[])
     cmd.AddValue("downtiltDeg", "gNB downtilt in degrees", downtiltDeg);
     cmd.AddValue("nfGnb", "gNB noise figure (dB)", nfGnb);
     cmd.AddValue("nfUe", "UE noise figure (dB)", nfUe);
+    cmd.AddValue("sectorized",
+                 "if true, every site hosts numSectors co-located gNBs with BearingAngle "
+                 "0/120/240 deg (P4.1b)",
+                 sectorized);
+    cmd.AddValue("numSectors", "Number of sectors per site when --sectorized is used",
+                 numSectors);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
 
     g_tddPattern = tddPattern;
     g_pdcchSymbols = pdcchSymbols;
+    g_sectorized = sectorized;
+    g_numSectors = numSectors;
     g_conventional = (scheme == "conventional");
     if (g_conventional)
     {
@@ -675,18 +846,39 @@ main(int argc, char* argv[])
     const double gNbHeight = 25;
     const double ueHeight = 1.5;
 
-    gNbNodes.Create(numSites);
+    const uint32_t sectorsPerSite = g_sectorized ? g_numSectors : 1;
+
+    gNbNodes.Create(numSites * sectorsPerSite);
     ueNodes.Create(arUeNum + vrUeNum + cgUeNum);
 
-    Ptr<ListPositionAllocator> bsPositionAlloc = CreateObject<ListPositionAllocator>();
-    bsPositionAlloc->Add(Vector(0.0, 0.0, gNbHeight));
+    // Site positions: site 0 at the centre, sites 1..6 on the first hex ring.
+    // Every sector of a site re-uses the same Vector, which is what makes the
+    // three gNBs a sectorized site instead of three separate sites.
+    g_sitePos.clear();
+    g_sitePos.push_back(Vector(0.0, 0.0, gNbHeight));
     for (uint32_t site = 1; site < numSites; ++site)
     {
         // hex ring: sites 1..6 sit at the inter-site distance around the centre
         double angle = 2.0 * M_PI * (site - 1) / 6.0;
-        bsPositionAlloc->Add(
-            Vector(isd * std::cos(angle), isd * std::sin(angle), gNbHeight));
+        g_sitePos.push_back(Vector(isd * std::cos(angle), isd * std::sin(angle), gNbHeight));
     }
+    Ptr<ListPositionAllocator> bsPositionAlloc = CreateObject<ListPositionAllocator>();
+    for (uint32_t site = 0; site < numSites; ++site)
+    {
+        for (uint32_t k = 0; k < sectorsPerSite; ++k)
+        {
+            Vector pos = g_sitePos[site];
+            if (g_sectorized)
+            {
+                const double offsetAz = 2.0 * M_PI * k / sectorsPerSite;
+                pos.x += g_sectorOffsetM * std::cos(offsetAz);
+                pos.y += g_sectorOffsetM * std::sin(offsetAz);
+            }
+            bsPositionAlloc->Add(pos);
+        }
+    }
+    std::cout << "[SECTOR] " << numSites << " site(s) x " << sectorsPerSite
+              << " sector(s) = " << (numSites * sectorsPerSite) << " gNB node(s)" << std::endl;
     mobility.SetPositionAllocator(bsPositionAlloc);
     mobility.Install(gNbNodes);
 
@@ -732,8 +924,35 @@ main(int argc, char* argv[])
         ueCgContainer.Add(ue);
     }
 
-    NetDeviceContainer gNbNetDev = nrHelper->InstallGnbDevice(gNbNodes, allBwps);
+    // ---- P4.1b: install the gNBs, one batch per sector ----
+    // Each gNB's antenna array is created inside InstallGnbDevice from the
+    // helper's ObjectFactory, so setting BearingAngle between batches gives every
+    // sector its own orientation without touching ns-3 internals.
+    NetDeviceContainer gNbNetDev;
+    g_gnbDevSiteSector.assign(numSites * sectorsPerSite, nullptr);
+    for (uint32_t k = 0; k < sectorsPerSite; ++k)
+    {
+        const double bearingDeg = 360.0 * k / sectorsPerSite;
+        // UniformPlanarArray::BearingAngle is checked against [-pi, pi], so 240 deg
+        // has to be written as -120 deg (the same orientation after wrapping).
+        const double bearingRad = WrapToPi(bearingDeg * M_PI / 180.0);
+        nrHelper->SetGnbAntennaAttribute("BearingAngle", DoubleValue(bearingRad));
+        NodeContainer batch;
+        for (uint32_t site = 0; site < numSites; ++site)
+        {
+            batch.Add(gNbNodes.Get(site * sectorsPerSite + k));
+        }
+        NetDeviceContainer batchDev = nrHelper->InstallGnbDevice(batch, allBwps);
+        for (uint32_t site = 0; site < numSites; ++site)
+        {
+            g_gnbDevSiteSector[site * sectorsPerSite + k] = batchDev.Get(site);
+        }
+        gNbNetDev.Add(batchDev);
+        std::cout << "[SECTOR] installed " << batchDev.GetN() << " gNB(s) with bearing "
+                  << bearingDeg << " deg (" << bearingRad << " rad)" << std::endl;
+    }
     g_gnbDevices = gNbNetDev;
+    ReportSectorBearings(numSites, sectorsPerSite);
     NetDeviceContainer ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
     NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps);
     NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps);
@@ -803,9 +1022,18 @@ main(int argc, char* argv[])
     }
 
     // attach UEs to the closest eNB
-    nrHelper->AttachToClosestEnb(ueArNetDev, gNbNetDev);
-    nrHelper->AttachToClosestEnb(ueVrNetDev, gNbNetDev);
-    nrHelper->AttachToClosestEnb(ueCgNetDev, gNbNetDev);
+    if (g_sectorized)
+    {
+        AttachBySector(ueArNetDev, nrHelper, numSites, sectorsPerSite);
+        AttachBySector(ueVrNetDev, nrHelper, numSites, sectorsPerSite);
+        AttachBySector(ueCgNetDev, nrHelper, numSites, sectorsPerSite);
+    }
+    else
+    {
+        nrHelper->AttachToClosestEnb(ueArNetDev, gNbNetDev);
+        nrHelper->AttachToClosestEnb(ueVrNetDev, gNbNetDev);
+        nrHelper->AttachToClosestEnb(ueCgNetDev, gNbNetDev);
+    }
 
     // Install sink application
     ApplicationContainer serverApps;
