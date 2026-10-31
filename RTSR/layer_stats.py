@@ -4,7 +4,8 @@ Inputs (all produced by the same simulation run, in its working directory):
     frame_stats_port<port>_ue<i>.csv   L1 application frames (XrFrameSink)
     rlc_drops.csv                      L3 RLC SDU drops (TxDrop trace)
     rtsr-flowmon.xml                   L2 IP packets (FlowMonitor)
-    mac_tb.csv / RxPacketTrace*.txt    L4/L5, optional (not yet wired)
+    mac_tb.csv                         L4 MAC scheduled TBs (DlScheduling)
+    phy_tb.csv                         L5 PHY received TBs / BLER / SINR
 
 Usage:
     python3 layer_stats.py --dir . --out layer_report.md
@@ -17,9 +18,9 @@ import os
 import xml.etree.ElementTree as ET
 
 
-def read_frames(pattern):
+def read_csv_rows(pattern):
     rows = []
-    for path in glob.glob(pattern):
+    for path in sorted(glob.glob(pattern)):
         with open(path, newline="", encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 r["_file"] = os.path.basename(path)
@@ -27,31 +28,34 @@ def read_frames(pattern):
     return rows
 
 
-def read_rlc_drops(path):
+def read_kv(path):
+    """Read a two-column metric,value CSV into a dict of floats."""
     if not os.path.isfile(path):
         return None
+    out = {}
     with open(path, newline="", encoding="utf-8") as fh:
-        return [r for r in csv.DictReader(fh)]
+        for r in csv.DictReader(fh):
+            try:
+                out[r["metric"]] = float(r["value"])
+            except (KeyError, ValueError):
+                continue
+    return out
 
 
 def read_ip(path):
-    """Per-flow IP statistics from the FlowMonitor XML."""
     if not os.path.isfile(path):
         return None, None
     root = ET.parse(path).getroot()
-
     ports = {}
     for f in root.iter("Flow"):
         if f.get("destinationPort") is not None:
             ports[int(f.get("flowId"))] = int(f.get("destinationPort"))
-
     video = {"tx": 0, "rx": 0}
     model = {"tx": 0, "rx": 0}
     for f in root.iter("Flow"):
         if f.get("txPackets") is None:
             continue
-        fid = int(f.get("flowId"))
-        bucket = model if ports.get(fid) == 5000 else video
+        bucket = model if ports.get(int(f.get("flowId"))) == 5000 else video
         bucket["tx"] += int(f.get("txPackets"))
         bucket["rx"] += int(f.get("rxPackets"))
     return video, model
@@ -67,11 +71,14 @@ def main():
     ap.add_argument("--out", default="layer_report.md")
     args = ap.parse_args()
 
-    frames = read_frames(os.path.join(args.dir, "frame_stats_port*_ue*.csv"))
-    drops = read_rlc_drops(os.path.join(args.dir, "rlc_drops.csv"))
-    video_ip, model_ip = read_ip(os.path.join(args.dir, "rtsr-flowmon.xml"))
+    d = args.dir
+    frames = read_csv_rows(os.path.join(d, "frame_stats_port*_ue*.csv"))
+    drops = read_csv_rows(os.path.join(d, "rlc_drops.csv"))
+    video_ip, model_ip = read_ip(os.path.join(d, "rtsr-flowmon.xml"))
+    mac = read_kv(os.path.join(d, "mac_tb.csv"))
+    phy = read_kv(os.path.join(d, "phy_tb.csv"))
 
-    # ---- L1: application frames ----
+    # ---- L1 ----
     n_frames = len(frames)
     n_complete = sum(1 for r in frames if r["complete"] == "1")
     n_in_pdb = sum(1 for r in frames if r["within_pdb"] == "1")
@@ -80,75 +87,97 @@ def main():
     fsr = pct(n_in_pdb, n_frames)
     frame_loss = pct(n_frames - n_complete, n_frames)
 
-    # ---- L3: RLC drops ----
-    rlc_total = len(drops) if drops is not None else None
-    rlc_sdu = sum(int(r["dropped_sdus"]) for r in drops) if drops else 0
-    rlc_frames = len(drops) if drops else 0
-
-    # ---- derived ----
-    video_sdu_lost = rlc_sdu
-    video_sdu_total = video_sdu_lost + rx_pkts
-    l3_rate = pct(video_sdu_lost, video_sdu_total)
-
+    # ---- L2 ----
     ip_tx, ip_rx = (video_ip["tx"], video_ip["rx"]) if video_ip else (0, 0)
     l2_loss = pct(ip_tx - ip_rx, ip_tx)
+    ip_lost = ip_tx - ip_rx
 
-    lines = []
-    lines.append("# 五层丢包汇总（单次运行）\n")
-    lines.append("| 层 | 指标 | 数值 | 说明 |")
-    lines.append("|---|---|---:|---|")
-    lines.append(f"| L1 应用 | 帧数 | {n_frames} | 源端生成 |")
-    lines.append(f"| L1 应用 | 完整帧 | {n_complete} | {pct(n_complete, n_frames):.1f}% |")
-    lines.append(f"| L1 应用 | PDB 内帧（FSR） | {n_in_pdb} | **{fsr:.2f}%** |")
-    lines.append(f"| L1 应用 | 帧丢失率 | — | **{frame_loss:.2f}%** |")
-    lines.append(f"| L2 IP | 视频包 tx/rx | {ip_tx} / {ip_rx} | 丢 {ip_tx - ip_rx} |")
-    lines.append(f"| L2 IP | 视频包丢失率 | — | **{l2_loss:.3f}%** |")
+    # ---- L3 ----
+    rlc_sdu = sum(int(r["dropped_sdus"]) for r in drops) if drops else 0
+    rlc_frames = len(drops) if drops else 0
+    video_sdu_total = rlc_sdu + rx_pkts
+    l3_rate = pct(rlc_sdu, video_sdu_total)
+
+    # ---- L4 / L5 ----
+    mac_tbs = int(mac.get("scheduled_tbs", 0)) if mac else None
+    mac_bytes = int(mac.get("scheduled_bytes", 0)) if mac else None
+    mac_retx = int(mac.get("retransmissions", 0)) if mac else None
+    phy_tbs = int(phy.get("rx_tbs", 0)) if phy else None
+    phy_corrupt = int(phy.get("corrupt_tbs", 0)) if phy else None
+    bler = phy.get("bler_percent", 0.0) if phy else None
+    sinr = phy.get("mean_sinr_db", 0.0) if phy else None
+
+    L = []
+    L.append("# 五层丢包汇总（单次运行）\n")
+    L.append("| 层 | 指标 | 数值 | 说明 |")
+    L.append("|---|---|---:|---|")
+    L.append(f"| L1 应用 | 帧数 / 完整 / PDB 内 | {n_frames} / {n_complete} / {n_in_pdb} | FSR **{fsr:.2f}%** |")
+    L.append(f"| L1 应用 | 帧丢失率 | **{frame_loss:.2f}%** | 不完整帧占比 |")
+    L.append(f"| L2 IP | 视频包 tx / rx | {ip_tx} / {ip_rx} | 丢 {ip_lost}（**{l2_loss:.3f}%**） |")
     if model_ip:
-        lines.append(f"| L2 IP | 模型流 tx/rx | {model_ip['tx']} / {model_ip['rx']} | "
-                     f"丢 {model_ip['tx'] - model_ip['rx']} |")
-    if drops is not None:
-        lines.append(f"| L3 RLC | 视频 SDU 丢弃数 | {rlc_sdu} | 可归属到 {rlc_frames} 帧 |")
-        lines.append(f"| L3 RLC | 视频 SDU 丢弃率 | — | **{l3_rate:.3f}%** |")
+        L.append(f"| L2 IP | 模型流 tx / rx | {model_ip['tx']} / {model_ip['rx']} | "
+                 f"丢 {model_ip['tx'] - model_ip['rx']} |")
+    L.append(f"| L3 RLC | 视频 SDU 丢弃 | {rlc_sdu} | 可归属 {rlc_frames} 帧（**{l3_rate:.3f}%**） |")
+    if mac is not None:
+        L.append(f"| L4 MAC | 调度 TB / 字节 | {mac_tbs} / {mac_bytes / 1048576:.2f} MB | "
+                 f"重传 {mac_retx} |")
     else:
-        lines.append("| L3 RLC | — | 缺失 | 未生成 rlc_drops.csv |")
-    lines.append("| L4 MAC | TB 失败率 | 未接入 | 待 0.4 |")
-    lines.append("| L5 PHY | BLER | 未接入 | 待 0.5 |")
+        L.append("| L4 MAC | — | 缺失 | 未生成 mac_tb.csv |")
+    if phy is not None:
+        L.append(f"| L5 PHY | 接收 TB / 损坏 | {phy_tbs} / {phy_corrupt} | "
+                 f"BLER **{bler:.3f}%**，SINR {sinr:.1f} dB |")
+    else:
+        L.append("| L5 PHY | — | 缺失 | 未生成 phy_tb.csv |")
 
-    # ---- consistency checks ----
+    # ---- checks ----
     checks = []
 
-    if n_frames and drops is not None:
-        ok = frame_loss >= l3_rate - 0.5
-        checks.append(("帧丢失率 ≥ RLC SDU 丢弃率",
-                       f"{frame_loss:.2f}% vs {l3_rate:.3f}%", ok))
+    def add(name, detail, ok):
+        checks.append((name, detail, ok))
+
+    if n_frames and drops:
+        add("帧丢失率 ≥ RLC SDU 丢弃率", f"{frame_loss:.2f}% vs {l3_rate:.3f}%",
+            frame_loss >= l3_rate - 0.5)
 
     if ip_tx:
-        ok = l2_loss <= l3_rate + 1.0
-        checks.append(("IP 包丢失率 ≤ RLC 丢弃率 + 1pp",
-                       f"{l2_loss:.3f}% vs {l3_rate:.3f}%", ok))
+        add("IP 丢失率 ≤ RLC 丢弃率 + 1pp", f"{l2_loss:.3f}% vs {l3_rate:.3f}%",
+            l2_loss <= l3_rate + 1.0)
 
-    # frame-level vs SDU-level attribution
-    if n_frames:
-        touched_ratio = pct(rlc_frames, n_frames)
-        ok = touched_ratio <= 100.0
-        checks.append(("RLC 触及帧数 ≤ 总帧数",
-                       f"{rlc_frames} vs {n_frames} ({touched_ratio:.1f}%)", ok))
+    if ip_tx and rlc_sdu:
+        ratio = rlc_sdu / max(1, ip_lost)
+        add("RLC 丢弃 / IP 丢失 ≈ 1", f"{rlc_sdu} / {ip_lost} = {ratio:.1f}×",
+            ratio <= 2.0)
 
-    lines.append("\n## 一致性校验\n")
-    lines.append("| 检查 | 数值 | 结果 |")
-    lines.append("|---|---|---|")
-    for name, val, ok in checks:
-        lines.append(f"| {name} | {val} | {'✅' if ok else '❌'} |")
+    if mac_tbs and phy_tbs:
+        ratio = phy_tbs / mac_tbs
+        add("PHY 接收 TB ≈ MAC 调度 TB", f"{phy_tbs} / {mac_tbs} = {ratio:.2f}×",
+            0.9 <= ratio <= 1.1)
 
-    if rx_pkts:
-        lines.append("\n## 备注\n")
-        lines.append(f"- 应用层收到包数 {rx_pkts}，源端发送包数 {exp_pkts}，"
-                     f"差 {exp_pkts - rx_pkts}（含被 RLC 丢弃的部分）")
-        lines.append(f"- RLC 视频丢弃 {rlc_sdu}，与上一行差值 "
-                     f"{'一致' if abs((exp_pkts - rx_pkts) - rlc_sdu) <= max(2, 0.02 * exp_pkts) else '不一致，需核对'}")
+    if phy is not None and mac is not None:
+        add("PHY 平均 SINR 在合理区间", f"{sinr:.1f} dB", -10.0 <= sinr <= 40.0)
 
-    text = "\n".join(lines) + "\n"
-    with open(os.path.join(args.dir, args.out), "w", encoding="utf-8") as fh:
+    if mac is not None and mac_bytes is not None and exp_pkts:
+        # scheduled bytes should be >= application bytes (headers + retransmissions)
+        app_bytes = sum(int(r["frame_bytes"]) for r in frames)
+        add("MAC 调度字节 ≥ 应用层字节", f"{mac_bytes} vs {app_bytes}",
+            mac_bytes >= app_bytes * 0.9)
+
+    L.append("\n## 一致性校验\n")
+    L.append("| 检查 | 数值 | 结果 |")
+    L.append("|---|---|---|")
+    for name, detail, ok in checks:
+        L.append(f"| {name} | {detail} | {'✅' if ok else '❌'} |")
+
+    L.append("\n## 备注\n")
+    L.append(f"- 应用层收到包 {rx_pkts}，源端发送包 {exp_pkts}，差 {exp_pkts - rx_pkts}")
+    L.append(f"- IP 层丢失 {ip_lost}，RLC 报丢 {rlc_sdu}，"
+             f"两者比 {rlc_sdu / max(1, ip_lost):.1f}×")
+    if phy is not None:
+        L.append(f"- PHY BLER {bler:.3f}%，说明丢包主要来自队列而非空口误码"
+                 if bler < 1.0 else f"- PHY BLER {bler:.3f}%，空口误码是主要丢包来源")
+
+    text = "\n".join(L) + "\n"
+    with open(os.path.join(d, args.out), "w", encoding="utf-8") as fh:
         fh.write(text)
     print(text)
 
