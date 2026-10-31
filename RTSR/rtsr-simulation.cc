@@ -67,6 +67,8 @@ static NetDeviceContainer g_ueDevicesForPhy;
 static NetDeviceContainer g_gnbDevices;
 static std::string g_tddPattern;
 static uint32_t g_pdcchSymbols = 0;
+// conventional = 20 Mbps pure video, no SR model flow (Fig.5 baseline)
+static bool g_conventional = false;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
@@ -481,6 +483,7 @@ main(int argc, char* argv[])
     std::string trafficModel = "3gpp";
     std::string preset = "none";
     uint32_t pdcchSymbols = 0;
+    std::string scheme = "rtsr";
     std::string tddPattern = "";
     uint32_t gnbRows = 4, gnbCols = 8;
     uint32_t ueRows = 1, ueCols = 1;
@@ -524,6 +527,8 @@ main(int argc, char* argv[])
     cmd.AddValue("jitterLimit", "Frame-arrival jitter truncation in ms", g_jitterLimitMs);
     cmd.AddValue("framePdb", "Frame PDB in ms (trafficModel=paper)", g_framePdbMs);
     cmd.AddValue("mtu", "Payload bytes per packet", g_mtu);
+    cmd.AddValue("scheme", "rtsr | conventional (20 Mbps pure video, no model flow)",
+                 scheme);
     cmd.AddValue("pdcchSymbols", "DL control (PDCCH) symbols, 0 = default",
                  pdcchSymbols);
     cmd.AddValue("tddPattern",
@@ -543,6 +548,13 @@ main(int argc, char* argv[])
 
     g_tddPattern = tddPattern;
     g_pdcchSymbols = pdcchSymbols;
+    g_conventional = (scheme == "conventional");
+    if (g_conventional)
+    {
+        g_videoBitrateMbps = 20.0;
+        std::cout << "[SCHEME] conventional: 20 Mbps pure video, no SR model flow"
+                  << std::endl;
+    }
 
     if (preset == "paperTable3")
     {
@@ -963,7 +975,8 @@ main(int argc, char* argv[])
     ueIpIface.Add(ueCgIpIface);
 
     uint32_t ueCount = ueNetDev.GetN();
-    for (uint32_t i = 0; i < ueCount; i++)
+    const uint32_t srUeCount = g_conventional ? 0 : ueCount;
+    for (uint32_t i = 0; i < srUeCount; i++)
     {
         Ptr<NetDevice> ueDevice = ueNetDev.Get(i);
         // 激活 SR 模型的低优先级承载
