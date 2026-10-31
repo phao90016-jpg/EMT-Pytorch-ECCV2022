@@ -429,6 +429,11 @@ main(int argc, char* argv[])
     double ueRadius = 0;     // 0 = auto
     uint32_t rngRun = 1;
     std::string trafficModel = "3gpp";
+    std::string preset = "none";
+    uint32_t gnbRows = 4, gnbCols = 8;
+    uint32_t ueRows = 1, ueCols = 1;
+    double downtiltDeg = 0.0;
+    double nfGnb = 5.0, nfUe = 7.0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -467,9 +472,38 @@ main(int argc, char* argv[])
     cmd.AddValue("jitterLimit", "Frame-arrival jitter truncation in ms", g_jitterLimitMs);
     cmd.AddValue("framePdb", "Frame PDB in ms (trafficModel=paper)", g_framePdbMs);
     cmd.AddValue("mtu", "Payload bytes per packet", g_mtu);
+    cmd.AddValue("preset", "none | paperTable3", preset);
+    cmd.AddValue("gnbRows", "gNB antenna rows", gnbRows);
+    cmd.AddValue("gnbCols", "gNB antenna columns", gnbCols);
+    cmd.AddValue("ueRows", "UE antenna rows", ueRows);
+    cmd.AddValue("ueCols", "UE antenna columns", ueCols);
+    cmd.AddValue("downtiltDeg", "gNB downtilt in degrees", downtiltDeg);
+    cmd.AddValue("nfGnb", "gNB noise figure (dB)", nfGnb);
+    cmd.AddValue("nfUe", "UE noise figure (dB)", nfUe);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
+
+    if (preset == "paperTable3")
+    {
+        // Table III of the paper (44 dBm per 20 MHz -> 44 dBm total, per decision #2)
+        centralFrequency = 4.0e9;
+        bandwidth = 100e6;
+        numerology = 1;      // 30 kHz
+        txPower = 44.0;
+        isd = 200.0;
+        gnbRows = 8;
+        gnbCols = 8;         // 64 antenna elements
+        ueRows = 2;
+        ueCols = 2;          // 4 antenna elements
+        downtiltDeg = 12.0;
+        nfGnb = 5.0;
+        nfUe = 9.0;
+        std::cout << "[PRESET] paperTable3 applied: 4.0 GHz / 100 MHz / 30 kHz / "
+                     "ISD 200 m / 64T4R / 44 dBm / downtilt 12 / NF 5,9"
+                  << std::endl;
+    }
+
     if (simTimeMs == 0)
     {
         simTimeMs = appDuration;
@@ -514,9 +548,9 @@ main(int argc, char* argv[])
 
     nrHelper->SetGnbPhyAttribute("TxPower", DoubleValue(txPower));
     nrHelper->SetGnbPhyAttribute("Numerology", UintegerValue(numerology));
-    nrHelper->SetGnbPhyAttribute("NoiseFigure", DoubleValue(5));
+    nrHelper->SetGnbPhyAttribute("NoiseFigure", DoubleValue(nfGnb));
     nrHelper->SetUePhyAttribute("TxPower", DoubleValue(23));
-    nrHelper->SetUePhyAttribute("NoiseFigure", DoubleValue(7));
+    nrHelper->SetUePhyAttribute("NoiseFigure", DoubleValue(nfUe));
 
     Config::SetDefault("ns3::LteRlcUm::MaxTxBufferSize", UintegerValue(500 * 1024));
     Config::SetDefault("ns3::LteEnbRrc::EpsBearerToRlcMapping",
@@ -528,15 +562,16 @@ main(int argc, char* argv[])
     nrHelper->SetSchedulerAttribute("SchedLcAlgorithmType",
                                     TypeIdValue(NrMacSchedulerLcQos::GetTypeId()));
 
-    nrHelper->SetGnbAntennaAttribute("NumRows", UintegerValue(4));
-    nrHelper->SetGnbAntennaAttribute("NumColumns", UintegerValue(8));
+    nrHelper->SetGnbAntennaAttribute("NumRows", UintegerValue(gnbRows));
+    nrHelper->SetGnbAntennaAttribute("NumColumns", UintegerValue(gnbCols));
     nrHelper->SetGnbAntennaAttribute("AntennaElement",
                                      PointerValue(CreateObject<ThreeGppAntennaModel>()));
     nrHelper->SetGnbAntennaAttribute("AntennaHorizontalSpacing", DoubleValue(0.5));
     nrHelper->SetGnbAntennaAttribute("AntennaVerticalSpacing", DoubleValue(0.8));
-    nrHelper->SetGnbAntennaAttribute("DowntiltAngle", DoubleValue(0 * M_PI / 180.0));
-    nrHelper->SetUeAntennaAttribute("NumRows", UintegerValue(1));
-    nrHelper->SetUeAntennaAttribute("NumColumns", UintegerValue(1));
+    nrHelper->SetGnbAntennaAttribute("DowntiltAngle",
+                                    DoubleValue(downtiltDeg * M_PI / 180.0));
+    nrHelper->SetUeAntennaAttribute("NumRows", UintegerValue(ueRows));
+    nrHelper->SetUeAntennaAttribute("NumColumns", UintegerValue(ueCols));
     nrHelper->SetUeAntennaAttribute("AntennaElement",
                                     PointerValue(CreateObject<IsotropicAntennaModel>()));
 
