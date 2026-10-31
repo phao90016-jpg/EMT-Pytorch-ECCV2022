@@ -64,6 +64,8 @@ static uint32_t g_appDurationMs = 60000;
 // event never runs and the CSV/summary is lost
 static ApplicationContainer g_frameSinks;
 static NetDeviceContainer g_ueDevicesForPhy;
+static NetDeviceContainer g_gnbDevices;
+static std::string g_tddPattern;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
@@ -105,6 +107,49 @@ RlcDropCallback(Ptr<const Packet> p)
 }
 
 // Connect the gNB RLC TxDrop trace once the DRB exists; retry until it does.
+// Apply a TDD pattern to every gNB PHY. Accepts "DDDSU" or "DL|DL|DL|S|UL".
+static void
+ApplyTddPattern()
+{
+    std::string pattern = g_tddPattern;
+    if (pattern.empty())
+    {
+        return;
+    }
+    if (pattern.find('|') == std::string::npos)
+    {
+        std::string conv;
+        for (char c : pattern)
+        {
+            std::string tok = (c == 'D') ? "DL" : (c == 'U') ? "UL" : (c == 'S') ? "S" : "F";
+            conv += (conv.empty() ? "" : "|") + tok;
+        }
+        pattern = conv;
+    }
+    uint32_t applied = 0;
+    for (uint32_t i = 0; i < g_gnbDevices.GetN(); ++i)
+    {
+        Ptr<NrGnbNetDevice> gnb = DynamicCast<NrGnbNetDevice>(g_gnbDevices.Get(i));
+        if (!gnb)
+        {
+            continue;
+        }
+        Ptr<NrGnbPhy> phy = gnb->GetPhy(0);
+        if (!phy)
+        {
+            continue;
+        }
+        phy->SetPattern(pattern);
+        ++applied;
+        if (i == 0)
+        {
+            std::cout << "[TDD] " << g_tddPattern << " -> " << pattern << " (slot period "
+                      << phy->GetSlotPeriod() << ")" << std::endl;
+        }
+    }
+    std::cout << "[TDD] applied to " << applied << " gNB PHY(s)" << std::endl;
+}
+
 static void
 TryConnectRlc()
 {
@@ -434,6 +479,7 @@ main(int argc, char* argv[])
     uint32_t rngRun = 1;
     std::string trafficModel = "3gpp";
     std::string preset = "none";
+    std::string tddPattern = "";
     uint32_t gnbRows = 4, gnbCols = 8;
     uint32_t ueRows = 1, ueCols = 1;
     double downtiltDeg = 0.0;
@@ -476,6 +522,9 @@ main(int argc, char* argv[])
     cmd.AddValue("jitterLimit", "Frame-arrival jitter truncation in ms", g_jitterLimitMs);
     cmd.AddValue("framePdb", "Frame PDB in ms (trafficModel=paper)", g_framePdbMs);
     cmd.AddValue("mtu", "Payload bytes per packet", g_mtu);
+    cmd.AddValue("tddPattern",
+                 "TDD pattern, e.g. DDDSU or DL|DL|DL|S|UL (empty = default)",
+                 tddPattern);
     cmd.AddValue("preset", "none | paperTable3", preset);
     cmd.AddValue("gnbRows", "gNB antenna rows", gnbRows);
     cmd.AddValue("gnbCols", "gNB antenna columns", gnbCols);
@@ -487,6 +536,8 @@ main(int argc, char* argv[])
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
+
+    g_tddPattern = tddPattern;
 
     if (preset == "paperTable3")
     {
@@ -658,6 +709,7 @@ main(int argc, char* argv[])
     }
 
     NetDeviceContainer gNbNetDev = nrHelper->InstallGnbDevice(gNbNodes, allBwps);
+    g_gnbDevices = gNbNetDev;
     NetDeviceContainer ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
     NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps);
     NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps);
@@ -927,6 +979,7 @@ main(int argc, char* argv[])
     {
         // The RLC entities only exist after the UE attaches and the DRB is created,
         // so retry the wildcard connection until it succeeds (first success wins).
+        Simulator::Schedule(MilliSeconds(0), &ApplyTddPattern);
         Simulator::Schedule(MilliSeconds(300), &TryConnectRlc);
         Simulator::Schedule(MilliSeconds(300), &TryConnectMacPhy);
     }
