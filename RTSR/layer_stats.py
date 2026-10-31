@@ -77,6 +77,7 @@ def main():
     video_ip, model_ip = read_ip(os.path.join(d, "rtsr-flowmon.xml"))
     mac = read_kv(os.path.join(d, "mac_tb.csv"))
     phy = read_kv(os.path.join(d, "phy_tb.csv"))
+    src = read_kv(os.path.join(d, "source_frames.csv"))
 
     # ---- L1 ----
     n_frames = len(frames)
@@ -84,7 +85,9 @@ def main():
     n_in_pdb = sum(1 for r in frames if r["within_pdb"] == "1")
     rx_pkts = sum(int(r["pkts"]) for r in frames)
     exp_pkts = sum(int(r["expected_pkts"]) for r in frames)
-    fsr = pct(n_in_pdb, n_frames)
+    frames_sent = int(src.get("frames_sent", n_frames)) if src else n_frames
+    fully_dropped = max(0, frames_sent - n_frames)
+    fsr = pct(n_in_pdb, frames_sent)
     frame_loss = pct(n_frames - n_complete, n_frames)
 
     # ---- L2 ----
@@ -111,7 +114,8 @@ def main():
     L.append("# 五层丢包汇总（单次运行）\n")
     L.append("| 层 | 指标 | 数值 | 说明 |")
     L.append("|---|---|---:|---|")
-    L.append(f"| L1 应用 | 帧数 / 完整 / PDB 内 | {n_frames} / {n_complete} / {n_in_pdb} | FSR **{fsr:.2f}%** |")
+    L.append(f"| L1 应用 | 源端发帧 / 见到 / PDB 内 | {frames_sent} / {n_frames} / {n_in_pdb} | FSR **{fsr:.2f}%** |")
+    L.append(f"| L1 应用 | 整帧全丢 | {fully_dropped} | sink 无记录 |")
     L.append(f"| L1 应用 | 帧丢失率 | **{frame_loss:.2f}%** | 不完整帧占比 |")
     L.append(f"| L2 IP | 视频包 tx / rx | {ip_tx} / {ip_rx} | 丢 {ip_lost}（**{l2_loss:.3f}%**） |")
     if model_ip:
@@ -136,8 +140,9 @@ def main():
         checks.append((name, detail, ok))
 
     if n_frames and drops:
-        add("帧丢失率 ≥ RLC SDU 丢弃率", f"{frame_loss:.2f}% vs {l3_rate:.3f}%",
-            frame_loss >= l3_rate - 0.5)
+        frame_loss_all = pct(frames_sent - n_complete, frames_sent)
+        add("帧丢失率(含整帧丢) ≥ RLC SDU 丢弃率", f"{frame_loss_all:.2f}% vs {l3_rate:.3f}%",
+            frame_loss_all >= l3_rate - 0.5)
 
     if ip_tx:
         add("IP 丢失率 ≤ RLC 丢弃率 + 1pp", f"{l2_loss:.3f}% vs {l3_rate:.3f}%",

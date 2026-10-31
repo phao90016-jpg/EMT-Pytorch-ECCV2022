@@ -1,0 +1,11 @@
+--- a/src/lte/model/lte-rlc-um.cc
++++ b/src/lte/model/lte-rlc-um.cc
+@@ -126,6 +126,7 @@ LteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
+                 NS_LOG_DEBUG("headOfLineDelayInMs    = " << headOfLineDelayInMs);
+                 NS_LOG_DEBUG("m_packetDelayBudgetMs    = " << m_packetDelayBudgetMs);
+                 NS_LOG_DEBUG("packet size     = " << p->GetSize());
+                 m_txDropTrace(p);
++                return; // RTSR patch: the SDU was declared discarded, so drop it
+             }
+         }
+ 
