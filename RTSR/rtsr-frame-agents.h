@@ -24,6 +24,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -254,6 +255,7 @@ class XrFrameSink : public Application
         uint32_t frameBytes{0};
         uint32_t expectedPkts{0};
         uint32_t pkts{0};
+        std::set<uint16_t> seqs;
         uint64_t rxBytes{0};
         Time sourceStart{Seconds(0)};
         Time firstArrival{Seconds(0)};
@@ -374,9 +376,10 @@ class XrFrameSink : public Application
             }
             FrameRecord& r = it->second;
             r.pkts++;
+            r.seqs.insert(hdr.seq);
             r.rxBytes += pkt->GetSize();
             r.lastArrival = Simulator::Now();
-            if (!r.complete && r.pkts >= r.expectedPkts)
+            if (!r.complete && r.seqs.size() >= r.expectedPkts)
             {
                 r.complete = true;
                 ++m_completed;
