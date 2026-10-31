@@ -123,6 +123,112 @@ TryConnectRlc()
     }
 }
 
+// ---- P0.4 / P0.5: MAC TB scheduling and PHY TB reception ----
+static uint64_t g_macTbs = 0;
+static uint64_t g_macRetx = 0;
+static uint64_t g_macTbBytes = 0;
+static uint64_t g_phyTbs = 0;
+static uint64_t g_phyCorrupt = 0;
+static uint64_t g_phyBytes = 0;
+static double g_sinrSum = 0.0;
+static uint32_t g_sinrCount = 0;
+
+static void
+OnDlScheduling(NrSchedulingCallbackInfo info)
+{
+    if (info.m_tbSize && info.m_streamId <= 0)
+    {
+        ++g_macTbs;
+        g_macTbBytes += info.m_tbSize;
+        // count retransmissions separately through the RV field
+        if (info.m_rv != 0)
+        {
+            ++g_macRetx;
+        }
+    }
+}
+
+static void
+OnRxPacketTraceUe(RxPacketTraceParams params)
+{
+    ++g_phyTbs;
+    g_phyBytes += params.m_tbSize;
+    if (params.m_corrupt)
+    {
+        ++g_phyCorrupt;
+    }
+    if (params.m_sinr > -0.5)
+    {
+        g_sinrSum += params.m_sinr;
+        ++g_sinrCount;
+    }
+}
+
+static void
+DumpMacPhy()
+{
+    std::ofstream mac("mac_tb.csv");
+    mac << "metric,value\n";
+    mac << "scheduled_tbs," << g_macTbs << "\n";
+    mac << "scheduled_bytes," << g_macTbBytes << "\n";
+    mac << "retransmissions," << g_macRetx << "\n";
+
+    std::ofstream phy("phy_tb.csv");
+    phy << "metric,value\n";
+    phy << "rx_tbs," << g_phyTbs << "\n";
+    phy << "corrupt_tbs," << g_phyCorrupt << "\n";
+    phy << "rx_bytes," << g_phyBytes << "\n";
+    double bler = g_phyTbs ? 100.0 * g_phyCorrupt / g_phyTbs : 0.0;
+    double meanSinr = g_sinrCount ? g_sinrSum / g_sinrCount : 0.0;
+    phy << "bler_percent," << bler << "\n";
+    phy << "mean_sinr_db," << meanSinr << "\n";
+
+    std::cout << "[MAC] scheduled TBs=" << g_macTbs << " bytes=" << g_macTbBytes
+              << " retx=" << g_macRetx << std::endl;
+    std::cout << "[PHY] rx TBs=" << g_phyTbs << " corrupt=" << g_phyCorrupt << " BLER=" << bler
+              << "% meanSINR=" << meanSinr << " dB" << std::endl;
+}
+
+// Try the MAC and PHY traces once the objects exist; retry a few times.
+static void
+TryConnectMacPhy()
+{
+    static uint32_t attempts = 0;
+    bool mac = Config::ConnectWithoutContextFailSafe(
+        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrGnbMac/DlScheduling",
+        MakeCallback(&OnDlScheduling));
+    static const char* phyPaths[] = {
+        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrUeSpectrumPhy/RxPacketTraceUe",
+        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrSpectrumPhy/RxPacketTraceUe",
+        "/NodeList/*/DeviceList/*/ComponentCarrierMapUe/*/NrUeSpectrumPhy/RxPacketTraceUe",
+        "/NodeList/*/DeviceList/*/NrUeSpectrumPhy/RxPacketTraceUe",
+    };
+    bool phy = false;
+    for (const char* path : phyPaths)
+    {
+        if (Config::ConnectWithoutContextFailSafe(path, MakeCallback(&OnRxPacketTraceUe)))
+        {
+            std::cout << "[PHY] connected via " << path << std::endl;
+            phy = true;
+            break;
+        }
+    }
+    if (mac && phy)
+    {
+        std::cout << "[MAC/PHY] traces connected after " << (attempts + 1) << " attempt(s)"
+                  << std::endl;
+        return;
+    }
+    if (++attempts < 40)
+    {
+        Simulator::Schedule(MilliSeconds(100), &TryConnectMacPhy);
+    }
+    else
+    {
+        std::cout << "[MAC/PHY] WARNING: mac=" << mac << " phy=" << phy << std::endl;
+    }
+}
+
 static void
 DumpRlcDrops()
 {
@@ -765,6 +871,7 @@ main(int argc, char* argv[])
         // The RLC entities only exist after the UE attaches and the DRB is created,
         // so retry the wildcard connection until it succeeds (first success wins).
         Simulator::Schedule(MilliSeconds(300), &TryConnectRlc);
+        Simulator::Schedule(MilliSeconds(300), &TryConnectMacPhy);
     }
 
     Simulator::Run();
@@ -772,6 +879,7 @@ main(int argc, char* argv[])
     if (g_paperTraffic)
     {
         DumpRlcDrops();
+        DumpMacPhy();
     }
 
 
