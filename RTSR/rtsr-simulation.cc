@@ -495,6 +495,36 @@ TryConnectMacPhy()
     }
 }
 
+// The frame sinks can only count frames of which something arrived.  The measured
+// total is what the sources had sent when the sinks stopped, written here so that
+// layer_stats.py can use it as the FSR denominator.
+static void
+DumpSourceFrames()
+{
+    uint64_t sent = 0;
+    uint64_t seen = 0;
+    uint64_t complete = 0;
+    uint64_t inPdb = 0;
+    for (const auto& t : g_frameSinkTotals)
+    {
+        sent += t.sentAtStop;
+        seen += t.seen;
+        complete += t.complete;
+        inPdb += t.withinPdb;
+    }
+    std::ofstream out("source_frames.csv");
+    out << "metric,value\n";
+    out << "frames_sent," << sent << "\n";
+    out << "frames_seen_by_sink," << seen << "\n";
+    out << "frames_complete," << complete << "\n";
+    out << "frames_within_pdb," << inPdb << "\n";
+    out << "frames_never_seen," << (sent > seen ? sent - seen : 0) << "\n";
+    const double fsr = sent ? (100.0 * inPdb / sent) : 0.0;
+    std::cout << "[FRAMES] sent(by source)=" << sent << " seen(by sink)=" << seen
+              << " never_seen=" << (sent > seen ? sent - seen : 0) << " complete=" << complete
+              << " within_pdb=" << inPdb << " FSR=" << fsr << "%" << std::endl;
+}
+
 static void
 DumpRlcDrops()
 {
@@ -590,6 +620,7 @@ ConfigureXrApp(NodeContainer& ueContainer,
         srcApp->SetFrameSizeShape(g_frameStdRatio, g_frameMinRatio, g_frameMaxRatio);
         srcApp->SetJitter(g_jitterStdMs, g_jitterLimitMs);
         srcApp->SetMtu(g_mtu);
+        srcApp->SetUeIndex(i);
         srcApp->SetStopTime(MilliSeconds(g_appStartMs + g_appDurationMs));
         remoteHostContainer.Get(0)->AddApplication(srcApp);
         clientApps.Add(srcApp);
@@ -608,6 +639,7 @@ ConfigureXrApp(NodeContainer& ueContainer,
             std::ostringstream label;
             label << "port" << port << "-ue" << i;
             sinkApp->SetLabel(label.str());
+            sinkApp->SetUeIndex(i);
             ueContainer.Get(i)->AddApplication(sinkApp);
             g_frameSinks.Add(sinkApp);
             g_ueDevicesForPhy.Add(ueNetDev.Get(i));
@@ -1608,6 +1640,7 @@ main(int argc, char* argv[])
     {
         DumpRlcDrops();
         DumpMacPhy();
+        DumpSourceFrames();
     }
 
 

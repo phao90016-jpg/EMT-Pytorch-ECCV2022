@@ -68,6 +68,31 @@ struct FrameHeader
     }
 };
 
+// The sink can only account for frames of which at least one packet arrived, so a
+// frame whose first packet is lost is invisible to it and silently leaves the FSR
+// denominator.  The sources therefore publish how many frames they have sent, keyed
+// by (destination port, per-container UE index); the sinks read that snapshot when
+// they stop and the run writes it out as source_frames.csv.
+struct FrameSourceRegistry
+{
+    static std::map<std::pair<uint16_t, uint32_t>, uint32_t>& Map()
+    {
+        static std::map<std::pair<uint16_t, uint32_t>, uint32_t> registry;
+        return registry;
+    }
+};
+
+struct FrameSinkTotals
+{
+    std::string label;
+    uint32_t seen{0};
+    uint32_t complete{0};
+    uint32_t withinPdb{0};
+    uint32_t sentAtStop{0};
+};
+
+static std::vector<FrameSinkTotals> g_frameSinkTotals;
+
 class XrFrameSource : public Application
 {
   public:
@@ -114,6 +139,11 @@ class XrFrameSource : public Application
         m_mtu = mtu;
     }
 
+    void SetUeIndex(uint32_t i)
+    {
+        m_ueIndex = i;
+    }
+
     void SetHardStop(Time t)
     {
         m_stopTime = t;
@@ -132,7 +162,10 @@ class XrFrameSource : public Application
 
         m_framesSent = 0;
         m_bytesSent = 0;
-        m_nominalTime = Seconds(0);
+        // The nominal grid must start at the application start time, not at t=0,
+        // otherwise the first schedule has a negative delay, is clamped to "now"
+        // and the source dumps a catch-up burst (that inflated the offered rate).
+        m_nominalTime = Simulator::Now();
         ScheduleNextFrame();
     }
 
@@ -182,10 +215,12 @@ class XrFrameSource : public Application
 
     void ScheduleNextFrame()
     {
-        double intervalMs = 1000.0 / m_fps;
+        // NOTE: ns-3's MilliSeconds() only takes integers, so MilliSeconds(1000/60)
+        // truncated 16.667 ms to 16 ms and the source ran at 62.5 fps.  Seconds()
+        // has a double overload - use it.
         double jitter = TruncatedJitterMs();
-        m_nominalTime += MilliSeconds(intervalMs);
-        Time at = m_nominalTime + MilliSeconds(jitter);
+        m_nominalTime += Seconds(1.0 / m_fps);
+        Time at = m_nominalTime + Seconds(jitter / 1000.0);
         if (at < Simulator::Now())
         {
             at = Simulator::Now();
@@ -222,6 +257,7 @@ class XrFrameSource : public Application
             remaining -= chunk;
         }
         ++m_framesSent;
+        FrameSourceRegistry::Map()[{m_port, m_ueIndex}] = m_framesSent;
         ScheduleNextFrame();
     }
 
@@ -244,6 +280,7 @@ class XrFrameSource : public Application
     Time m_stopTime{Seconds(0)};
 
     uint32_t m_framesSent{0};
+    uint32_t m_ueIndex{0};
     uint64_t m_bytesSent{0};
 };
 
@@ -297,14 +334,29 @@ class XrFrameSink : public Application
         m_label = label;
     }
 
+    void SetUeIndex(uint32_t i)
+    {
+        m_ueIndex = i;
+    }
+
     void PrintSummary()
     {
-        uint32_t seen = static_cast<uint32_t>(m_frames.size());
-        double fsr = seen ? (100.0 * m_onTime / seen) : 0.0;
+        const uint32_t seen = static_cast<uint32_t>(m_frames.size());
+        const uint32_t sent = SentAtStop();
+        const double fsrSeen = seen ? (100.0 * m_onTime / seen) : 0.0;
+        const double fsrSent = sent ? (100.0 * m_onTime / sent) : 0.0;
         std::cout << "[XrFrameSink " << m_label << "] frames=" << seen
                   << " complete=" << m_completed << " within_pdb=" << m_onTime
-                  << " FSR=" << fsr << "% bad_hdr=" << m_badHdr << " pkts_rx=" << m_rxPackets
-                  << std::endl;
+                  << " FSR_seen=" << fsrSeen << "% sent=" << sent << " FSR=" << fsrSent
+                  << "% bad_hdr=" << m_badHdr << " pkts_rx=" << m_rxPackets << std::endl;
+    }
+
+    // Frames the matching source had already sent when this sink stopped.
+    uint32_t SentAtStop() const
+    {
+        const auto it = FrameSourceRegistry::Map().find({m_port, m_ueIndex});
+        const uint32_t sent = (it == FrameSourceRegistry::Map().end()) ? 0 : it->second;
+        return std::max<uint32_t>(sent, static_cast<uint32_t>(m_frames.size()));
     }
 
   private:
@@ -323,6 +375,13 @@ class XrFrameSink : public Application
         }
         WriteCsv();
         PrintSummary();
+        FrameSinkTotals totals;
+        totals.label = m_label;
+        totals.seen = static_cast<uint32_t>(m_frames.size());
+        totals.complete = m_completed;
+        totals.withinPdb = m_onTime;
+        totals.sentAtStop = SentAtStop();
+        g_frameSinkTotals.push_back(totals);
     }
 
     void WriteCsv()
@@ -398,6 +457,7 @@ class XrFrameSink : public Application
     double m_pdbMs{10.0};
     std::string m_csvPath{"frame_stats.csv"};
     std::string m_label{"ue"};
+    uint32_t m_ueIndex{0};
 
     std::map<uint32_t, FrameRecord> m_frames;
     uint32_t m_completed{0};
