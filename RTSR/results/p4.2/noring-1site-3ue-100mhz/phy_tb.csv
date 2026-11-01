@@ -1,0 +1,17 @@
+metric,value
+rx_tbs,1584
+corrupt_tbs,0
+rx_bytes,24531060
+measured_cells,3
+measured_ues,3
+bler_percent,0
+mean_sinr_db,65.3956
+cell1_rnti1_rx_tbs,529
+cell1_rnti1_bler_percent,0
+cell1_rnti1_sinr_db,73.7907
+cell3_rnti1_rx_tbs,544
+cell3_rnti1_bler_percent,0
+cell3_rnti1_sinr_db,66.0817
+cell5_rnti1_rx_tbs,511
+cell5_rnti1_bler_percent,0
+cell5_rnti1_sinr_db,55.9745

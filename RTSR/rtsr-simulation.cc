@@ -22,12 +22,15 @@
 #include "ns3/xr-traffic-mixer-helper.h"
 #include "rtsr-frame-agents.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <map>
 #include <set>
+#include <utility>
 #include <vector>
 
 /**
@@ -79,6 +82,25 @@ static std::vector<Ptr<NetDevice>> g_gnbDevSiteSector;
 // path loss / angles towards the UEs stay unchanged).  g_sitePos keeps the true
 // site centre and is what UE-to-sector assignment uses.
 static const double g_sectorOffsetM = 1.0;
+// ---- P4.2: multi-ring lattice and centre-only statistics ----
+// g_siteRings >= 0 switches to a hexagonal lattice with that many site rings
+// (R=1 -> 7 sites, R=2 -> 19, R=3 -> 37); -1 keeps the legacy --numSites layout.
+static int32_t g_siteRings = -1;
+// g_statsRings >= 0 restricts every layer's statistics to the sites whose ring
+// index is <= g_statsRings (the outer rings then only contribute interference).
+static int32_t g_statsRings = -1;
+// g_uePerCell > 0 drops that many UEs around every site (per sector) instead of
+// one disc of UEs around the centre.
+static uint32_t g_uePerCell = 0;
+static std::vector<uint32_t> g_siteRing;              // ring index per site
+static std::set<uint32_t> g_centerGnbNodeIds;         // gNB node ids that are measured
+static std::set<uint16_t> g_centerCellIds;            // their cell ids
+static std::map<uint32_t, uint32_t> g_ueServingSite;  // UE node id -> site index
+static uint32_t g_centerUeCount = 0;
+static uint32_t g_outerUeCount = 0;
+static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
+static bool IsCenterSite(uint32_t site);
+static bool IsCenterUe(uint32_t ueNodeId);
 static std::string g_tddPattern;
 static uint32_t g_pdcchSymbols = 0;
 // conventional = 20 Mbps pure video, no SR model flow (Fig.5 baseline)
@@ -86,14 +108,41 @@ static bool g_conventional = false;
 
 // ---- P0.3: RLC SDU drop accounting (TxDrop trace on the gNB RLC) ----
 static uint64_t g_rlcDrops = 0;
+static uint64_t g_rlcDropsOutside = 0; // rejected by the P4.2 centre-cell filter
+static uint64_t g_rlcUnparsed = 0;     // context had no /NodeList/<id>/ (counted anyway)
 static uint64_t g_rlcAttributed = 0;
 static std::set<uint64_t> g_rlcDistinct;
 static uint64_t g_rlcDroppedBytes = 0;
 static std::map<uint32_t, uint64_t> g_rlcDropsPerFrame;
 
 static void
-RlcDropCallback(Ptr<const Packet> p)
+RlcDropCallback(std::string context, Ptr<const Packet> p)
 {
+    // When the statistics are restricted, only drops of the measured cells count.
+    // The context looks like "/NodeList/<gnbNodeId>/DeviceList/...", so the node id
+    // of the gNB that owns this RLC entity is all we need.
+    if (g_statsRings >= 0)
+    {
+        const std::string head = "/NodeList/";
+        const size_t pos = context.find(head);
+        if (pos == std::string::npos)
+        {
+            // No node id in the context: cannot filter, count it and say so.
+            ++g_rlcUnparsed;
+        }
+        else
+        {
+            const size_t begin = pos + head.size();
+            const size_t end = context.find('/', begin);
+            const std::string idStr = context.substr(begin, end - begin);
+            const uint32_t nodeId = static_cast<uint32_t>(std::strtoul(idStr.c_str(), nullptr, 10));
+            if (g_centerGnbNodeIds.find(nodeId) == g_centerGnbNodeIds.end())
+            {
+                ++g_rlcDropsOutside;
+                return;
+            }
+        }
+    }
     ++g_rlcDrops;
     g_rlcDroppedBytes += p->GetSize();
     // The RLC SDU starts with the PDCP/IP headers, so scan the first bytes for the
@@ -171,7 +220,7 @@ static void
 TryConnectRlc()
 {
     static uint32_t attempts = 0;
-    bool ok = Config::ConnectWithoutContextFailSafe(
+    bool ok = Config::ConnectFailSafe(
         "/NodeList/*/DeviceList/*/LteEnbRrc/UeMap/*/DataRadioBearerMap/*/LteRlc/TxDrop",
         MakeCallback(&RlcDropCallback));
     if (ok)
@@ -192,6 +241,9 @@ TryConnectRlc()
 
 // ---- P0.4 / P0.5: MAC TB scheduling and PHY TB reception ----
 static uint64_t g_macTbs = 0;
+static uint64_t g_macAllEvents = 0;  // every DlScheduling callback, before filtering
+static uint64_t g_macTbSizeZero = 0; // dropped: tbSize == 0
+static uint64_t g_macStreamGt0 = 0;  // dropped: streamId > 0
 static uint64_t g_macRetx = 0;
 static uint64_t g_macTbBytes = 0;
 static uint64_t g_phyTbs = 0;
@@ -199,6 +251,10 @@ static uint64_t g_phyCorrupt = 0;
 static uint64_t g_phyBytes = 0;
 static double g_sinrSum = 0.0;
 static uint32_t g_sinrCount = 0;
+// RxPacketTraceUe is emitted once per MAC PDU in the received burst, not once per
+// TB, so the same TB would be counted several times (1.3x at high load).  One UE
+// receives at most one TB per slot, hence the (frame, slot, rnti) key.
+static std::set<uint64_t> g_phyTbKeys;
 
 // Per-UE PHY statistics: the network-wide mean hides whether the interference is
 // actually felt by some UEs, so keep a per-RNTI breakdown as well.
@@ -212,12 +268,33 @@ struct UePhyStat
 // RNTIs are handed out per cell starting from 1, so the map key is
 // (cellId << 16) | rnti - a bare RNTI would merge UEs of different cells.
 static std::map<uint64_t, UePhyStat> g_uePhyStats;
+// Same idea on the MAC side: one UE gets at most one DL TB per slot, so
+// (cell, frame, slot, rnti) identifies a TB and reveals duplicated DCI traces.
+static std::set<uint64_t> g_macTbKeys;
+static uint64_t g_macDuplicateEvents = 0;
 
 static void
-OnDlScheduling(NrSchedulingCallbackInfo info)
+OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
 {
+    ++g_macAllEvents;
+    if (!info.m_tbSize)
+    {
+        ++g_macTbSizeZero;
+    }
+    if (info.m_streamId > 0)
+    {
+        ++g_macStreamGt0;
+    }
     if (info.m_tbSize && info.m_streamId <= 0)
     {
+        const uint64_t tbKey = (static_cast<uint64_t>(cellId) << 48) |
+                               (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
+                               (static_cast<uint64_t>(info.m_slotNum) << 16) | info.m_rnti;
+        if (!g_macTbKeys.insert(tbKey).second)
+        {
+            ++g_macDuplicateEvents;
+            return;
+        }
         ++g_macTbs;
         g_macTbBytes += info.m_tbSize;
         // count retransmissions separately through the RV field
@@ -231,6 +308,18 @@ OnDlScheduling(NrSchedulingCallbackInfo info)
 static void
 OnRxPacketTraceUe(RxPacketTraceParams params)
 {
+    const uint64_t tbKey = (static_cast<uint64_t>(params.m_cellId) << 48) |
+                           (static_cast<uint64_t>(params.m_frameNum & 0xffff) << 32) |
+                           (static_cast<uint64_t>(params.m_slotNum) << 16) | params.m_rnti;
+    if (g_statsRings >= 0 &&
+        g_centerCellIds.find(static_cast<uint16_t>(params.m_cellId)) == g_centerCellIds.end())
+    {
+        return; // reception of a cell outside the measured scope
+    }
+    if (!g_phyTbKeys.insert(tbKey).second)
+    {
+        return; // already counted this TB (one of its other MAC PDUs)
+    }
     ++g_phyTbs;
     g_phyBytes += params.m_tbSize;
     if (params.m_corrupt)
@@ -265,19 +354,29 @@ DumpMacPhy()
     mac << "scheduled_tbs," << g_macTbs << "\n";
     mac << "scheduled_bytes," << g_macTbBytes << "\n";
     mac << "retransmissions," << g_macRetx << "\n";
+    mac << "measured_cells," << g_centerCellIds.size() << "\n";
 
     std::ofstream phy("phy_tb.csv");
     phy << "metric,value\n";
     phy << "rx_tbs," << g_phyTbs << "\n";
     phy << "corrupt_tbs," << g_phyCorrupt << "\n";
     phy << "rx_bytes," << g_phyBytes << "\n";
+    phy << "measured_cells," << g_centerCellIds.size() << "\n";
+    phy << "measured_ues," << g_centerUeCount << "\n";
     double bler = g_phyTbs ? 100.0 * g_phyCorrupt / g_phyTbs : 0.0;
     double meanSinr = g_sinrCount ? g_sinrSum / g_sinrCount : 0.0;
     phy << "bler_percent," << bler << "\n";
     phy << "mean_sinr_db," << meanSinr << "\n";
 
+    mac << "all_dlscheduling_events," << g_macAllEvents << "\n";
+    mac << "dropped_tbsize_zero," << g_macTbSizeZero << "\n";
+    mac << "dropped_stream_gt0," << g_macStreamGt0 << "\n";
+    mac << "duplicate_dci_events," << g_macDuplicateEvents << "\n";
     std::cout << "[MAC] scheduled TBs=" << g_macTbs << " bytes=" << g_macTbBytes
-              << " retx=" << g_macRetx << std::endl;
+              << " retx=" << g_macRetx << " | all_events=" << g_macAllEvents
+              << " dropped_tbsize0=" << g_macTbSizeZero
+              << " dropped_stream>0=" << g_macStreamGt0
+              << " duplicate_dci=" << g_macDuplicateEvents << std::endl;
     std::cout << "[PHY] rx TBs=" << g_phyTbs << " corrupt=" << g_phyCorrupt << " BLER=" << bler
               << "% meanSINR=" << meanSinr << " dB" << std::endl;
 
@@ -299,18 +398,56 @@ DumpMacPhy()
 }
 
 // Try the MAC and PHY traces once the objects exist; retry a few times.
+// DlScheduling has no cell id in its payload, so the trace is connected per gNB
+// device and the cell id is bound into the callback.  That is what makes the MAC
+// statistics restrictable to the centre cells.
+static void
+OnDlSchedulingCell(uint16_t cellId, NrSchedulingCallbackInfo info)
+{
+    if (g_statsRings >= 0 && g_centerCellIds.find(cellId) == g_centerCellIds.end())
+    {
+        return;
+    }
+    OnDlScheduling(cellId, info);
+}
+
 static void
 TryConnectMacPhy()
 {
     static uint32_t attempts = 0;
-    bool mac = Config::ConnectWithoutContextFailSafe(
-        "/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrGnbMac/DlScheduling",
-        MakeCallback(&OnDlScheduling));
+    static bool phyConnectedOnce = false;
+    uint32_t macConnected = 0;
+    for (const auto& nd : g_gnbDevSiteSector)
+    {
+        Ptr<NrGnbNetDevice> gnb = DynamicCast<NrGnbNetDevice>(nd);
+        if (!gnb || !gnb->GetMac(0))
+        {
+            continue;
+        }
+        const uint16_t cellId = gnb->GetCellId();
+        if (g_statsRings >= 0 && g_centerCellIds.find(cellId) == g_centerCellIds.end())
+        {
+            continue;
+        }
+        if (gnb->GetMac(0)->TraceConnectWithoutContext(
+                "DlScheduling",
+                MakeBoundCallback(&OnDlSchedulingCell, cellId)))
+        {
+            ++macConnected;
+        }
+    }
+    const bool mac = (macConnected > 0);
+    if (mac && attempts == 0)
+    {
+        std::cout << "[MAC] DlScheduling connected on " << macConnected << " cell(s)" << std::endl;
+    }
     // The UE spectrum PHY is not reachable through Config paths, so connect it
     // directly: NrUeNetDevice -> NrUePhy -> NrSpectrumPhy -> trace.
-    bool phy = false;
+    // Connect only once: every extra Connect would add another callback and double
+    // count the TBs.
+    bool phy = phyConnectedOnce;
     uint32_t connected = 0;
-    for (uint32_t i = 0; i < g_ueDevicesForPhy.GetN(); ++i)
+    for (uint32_t i = 0; !phyConnectedOnce && i < g_ueDevicesForPhy.GetN(); ++i)
     {
         Ptr<NrUeNetDevice> ueDev = DynamicCast<NrUeNetDevice>(g_ueDevicesForPhy.Get(i));
         if (!ueDev)
@@ -332,10 +469,15 @@ TryConnectMacPhy()
             ++connected;
         }
     }
-    phy = (connected > 0);
-    if (phy)
+    if (!phyConnectedOnce)
     {
-        std::cout << "[PHY] connected " << connected << " RxPacketTraceUe source(s)" << std::endl;
+        phy = (connected > 0);
+        phyConnectedOnce = phy;
+        if (phy)
+        {
+            std::cout << "[PHY] connected " << connected << " RxPacketTraceUe source(s)"
+                      << std::endl;
+        }
     }
     if (mac && phy)
     {
@@ -362,9 +504,16 @@ DumpRlcDrops()
     {
         out << kv.first << "," << kv.second << "\n";
     }
+    std::ofstream scope("rlc_scope.csv");
+    scope << "metric,value\n";
+    scope << "kept_dropped_sdus," << g_rlcDrops << "\n";
+    scope << "outside_scope_dropped_sdus," << g_rlcDropsOutside << "\n";
+    scope << "unparsed_events," << g_rlcUnparsed << "\n";
     std::cout << "[RLC] events=" << g_rlcDrops << " attributed=" << g_rlcAttributed
               << " distinct_pkts=" << g_rlcDistinct.size()
-              << " frames_touched=" << g_rlcDropsPerFrame.size() << std::endl;
+              << " frames_touched=" << g_rlcDropsPerFrame.size()
+              << " outside_scope=" << g_rlcDropsOutside << " unparsed=" << g_rlcUnparsed
+              << std::endl;
 }
 
 
@@ -445,19 +594,29 @@ ConfigureXrApp(NodeContainer& ueContainer,
         remoteHostContainer.Get(0)->AddApplication(srcApp);
         clientApps.Add(srcApp);
 
-        Ptr<XrFrameSink> sinkApp = CreateObject<XrFrameSink>();
-        sinkApp->SetLocalPort(port);
-        sinkApp->SetMtu(g_mtu);
-        sinkApp->SetPdbMs(g_framePdbMs);
-        std::ostringstream csvName;
-        csvName << "frame_stats_port" << port << "_ue" << i << ".csv";
-        sinkApp->SetCsvPath(csvName.str());
-        std::ostringstream label;
-        label << "port" << port << "-ue" << i;
-        sinkApp->SetLabel(label.str());
-        ueContainer.Get(i)->AddApplication(sinkApp);
-        g_frameSinks.Add(sinkApp);
-        g_ueDevicesForPhy.Add(ueNetDev.Get(i));
+        // P4.2: only UEs served by the measured (centre) sites feed the statistics.
+        // The outer UEs still get their traffic - they are just not measured.
+        if (IsCenterUe(ueContainer.Get(i)->GetId()))
+        {
+            Ptr<XrFrameSink> sinkApp = CreateObject<XrFrameSink>();
+            sinkApp->SetLocalPort(port);
+            sinkApp->SetMtu(g_mtu);
+            sinkApp->SetPdbMs(g_framePdbMs);
+            std::ostringstream csvName;
+            csvName << "frame_stats_port" << port << "_ue" << i << ".csv";
+            sinkApp->SetCsvPath(csvName.str());
+            std::ostringstream label;
+            label << "port" << port << "-ue" << i;
+            sinkApp->SetLabel(label.str());
+            ueContainer.Get(i)->AddApplication(sinkApp);
+            g_frameSinks.Add(sinkApp);
+            g_ueDevicesForPhy.Add(ueNetDev.Get(i));
+            ++g_centerUeCount;
+        }
+        else
+        {
+            ++g_outerUeCount;
+        }
 
         nrHelper->ActivateDedicatedEpsBearer(ueNetDev.Get(i), bearer, tft);
 
@@ -512,6 +671,111 @@ ConfigureXrApp(NodeContainer& ueContainer,
         serverApps.Add(packetSink);
     }
     clientApps.Add(currentUeClientApps);
+}
+
+// ---- P4.2: lattice, scope helpers ----
+
+// Hexagonal site lattice: ring 0 = the centre, then 6, 12, 18 ... sites per ring,
+// ordered by azimuth inside each ring.  The old code placed sites 1..N on a single
+// circle of radius ISD, which for numSites > 7 produced duplicated positions
+// (site 7 landed on site 1, site 8 on site 2) - that bug is fixed here.
+static std::vector<Vector>
+BuildSitePositions(uint32_t numSites, double isd, double height, std::vector<uint32_t>* rings)
+{
+    std::vector<Vector> out;
+    std::vector<uint32_t> outRings;
+    out.push_back(Vector(0.0, 0.0, height));
+    outRings.push_back(0);
+    for (uint32_t ring = 1; out.size() < numSites; ++ring)
+    {
+        std::vector<std::pair<double, std::pair<int, int>>> layer;
+        for (int q = -(int)ring; q <= (int)ring; ++q)
+        {
+            for (int r = -(int)ring; r <= (int)ring; ++r)
+            {
+                const int s = q + r;
+                if (std::max(std::abs(q), std::max(std::abs(r), std::abs(s))) != (int)ring)
+                {
+                    continue;
+                }
+                const double x = isd * (q + r / 2.0);
+                const double y = isd * (r * std::sqrt(3.0) / 2.0);
+                layer.emplace_back(std::atan2(y, x), std::make_pair(q, r));
+            }
+        }
+        std::sort(layer.begin(), layer.end());
+        for (const auto& item : layer)
+        {
+            if (out.size() >= numSites)
+            {
+                break;
+            }
+            const int q = item.second.first;
+            const int r = item.second.second;
+            out.push_back(Vector(isd * (q + r / 2.0), isd * (r * std::sqrt(3.0) / 2.0), height));
+            outRings.push_back(ring);
+        }
+    }
+    if (rings)
+    {
+        *rings = outRings;
+    }
+    return out;
+}
+
+static bool
+IsCenterSite(uint32_t site)
+{
+    if (g_statsRings < 0)
+    {
+        return true;
+    }
+    if (site >= g_siteRing.size())
+    {
+        return true;
+    }
+    return g_siteRing[site] <= static_cast<uint32_t>(g_statsRings);
+}
+
+static bool
+IsCenterUe(uint32_t ueNodeId)
+{
+    if (g_statsRings < 0)
+    {
+        return true;
+    }
+    const auto it = g_ueServingSite.find(ueNodeId);
+    if (it == g_ueServingSite.end())
+    {
+        return true; // legacy attach path: no per-UE site information
+    }
+    return IsCenterSite(it->second);
+}
+
+// Collect the gNB node ids / cell ids whose statistics are counted.
+static void
+BuildCenterSets(uint32_t numSites, uint32_t sectorsPerSite)
+{
+    g_centerGnbNodeIds.clear();
+    g_centerCellIds.clear();
+    for (uint32_t site = 0; site < numSites; ++site)
+    {
+        if (!IsCenterSite(site))
+        {
+            continue;
+        }
+        for (uint32_t k = 0; k < sectorsPerSite; ++k)
+        {
+            Ptr<NetDevice> nd = g_gnbDevSiteSector[site * sectorsPerSite + k];
+            Ptr<NrGnbNetDevice> gnb = DynamicCast<NrGnbNetDevice>(nd);
+            if (!gnb)
+            {
+                continue;
+            }
+            g_centerGnbNodeIds.insert(nd->GetNode()->GetId());
+            g_centerCellIds.insert(gnb->GetCellId());
+        }
+    }
 }
 
 // ---- P4.1b: sectorization helpers ----
@@ -607,6 +871,7 @@ AttachBySector(const NetDeviceContainer& ueDevs,
             }
         }
         ++perSector[bestSite * sectorsPerSite + bestSector];
+        g_ueServingSite[ueDev->GetNode()->GetId()] = bestSite;
         std::cout << "[ATTACH] ue node " << ueDev->GetNode()->GetId() << " -> site " << bestSite
                   << " sector " << bestSector << " (ue azimuth "
                   << (azimuth * 180.0 / M_PI) << " deg)" << std::endl;
@@ -652,6 +917,9 @@ main(int argc, char* argv[])
     double nfGnb = 5.0, nfUe = 7.0;
     bool sectorized = false;
     uint32_t numSectors = 3;
+    int32_t siteRings = -1;
+    int32_t statsRings = -1;
+    uint32_t uePerCell = 0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -711,6 +979,18 @@ main(int argc, char* argv[])
                  sectorized);
     cmd.AddValue("numSectors", "Number of sectors per site when --sectorized is used",
                  numSectors);
+    cmd.AddValue("siteRings",
+                 "If >= 0, lay the sites out on a hexagonal lattice with that many rings "
+                 "(1 -> 7 sites, 2 -> 19, 3 -> 37) instead of the legacy --numSites layout",
+                 siteRings);
+    cmd.AddValue("statsRings",
+                 "If >= 0, only sites within this many rings are measured; the outer rings "
+                 "still transmit and therefore still interfere (P4.2)",
+                 statsRings);
+    cmd.AddValue("uePerCell",
+                 "If > 0, drop this many UEs per sector around every site instead of one "
+                 "disc of UEs around the centre (P4.2)",
+                 uePerCell);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
@@ -719,6 +999,30 @@ main(int argc, char* argv[])
     g_pdcchSymbols = pdcchSymbols;
     g_sectorized = sectorized;
     g_numSectors = numSectors;
+    g_siteRings = siteRings;
+    g_statsRings = statsRings;
+    g_uePerCell = uePerCell;
+    if (g_siteRings >= 0)
+    {
+        numSites = 1 + 3 * static_cast<uint32_t>(g_siteRings) *
+                           static_cast<uint32_t>(g_siteRings + 1);
+    }
+    if (g_statsRings > g_siteRings && g_siteRings >= 0)
+    {
+        NS_ABORT_MSG("statsRings (" << g_statsRings << ") exceeds siteRings (" << g_siteRings
+                                    << "): there is no such outer ring");
+    }
+    if (g_uePerCell > 0)
+    {
+        const uint32_t sectors = g_sectorized ? g_numSectors : 1;
+        const uint32_t total = numSites * sectors * g_uePerCell;
+        NS_ABORT_MSG_IF(total > 65000, "uePerCell would create " << total << " UEs");
+        arUeNum = static_cast<uint16_t>(total);
+        vrUeNum = 0;
+        cgUeNum = 0;
+        std::cout << "[P4.2] uePerCell=" << g_uePerCell << " -> " << total << " UEs ("
+                  << numSites << " sites x " << sectors << " sectors)" << std::endl;
+    }
     g_conventional = (scheme == "conventional");
     if (g_conventional)
     {
@@ -851,17 +1155,13 @@ main(int argc, char* argv[])
     gNbNodes.Create(numSites * sectorsPerSite);
     ueNodes.Create(arUeNum + vrUeNum + cgUeNum);
 
-    // Site positions: site 0 at the centre, sites 1..6 on the first hex ring.
-    // Every sector of a site re-uses the same Vector, which is what makes the
-    // three gNBs a sectorized site instead of three separate sites.
-    g_sitePos.clear();
-    g_sitePos.push_back(Vector(0.0, 0.0, gNbHeight));
-    for (uint32_t site = 1; site < numSites; ++site)
-    {
-        // hex ring: sites 1..6 sit at the inter-site distance around the centre
-        double angle = 2.0 * M_PI * (site - 1) / 6.0;
-        g_sitePos.push_back(Vector(isd * std::cos(angle), isd * std::sin(angle), gNbHeight));
-    }
+    // Site positions come from the hexagonal lattice (ring 0 = centre, then 6, 12, 18
+    // sites per ring).  Every sector of a site re-uses the same Vector, which is what
+    // makes the three gNBs a sectorized site instead of three separate sites.
+    g_sitePos = BuildSitePositions(numSites, isd, gNbHeight, &g_siteRing);
+    std::cout << "[P4.2] " << numSites << " site(s) on "
+              << (g_siteRings < 0 ? std::string("legacy") : std::to_string(g_siteRings))
+              << " ring(s), " << (numSites * sectorsPerSite) << " cell(s)" << std::endl;
     Ptr<ListPositionAllocator> bsPositionAlloc = CreateObject<ListPositionAllocator>();
     for (uint32_t site = 0; site < numSites; ++site)
     {
@@ -882,18 +1182,53 @@ main(int argc, char* argv[])
     mobility.SetPositionAllocator(bsPositionAlloc);
     mobility.Install(gNbNodes);
 
-    Ptr<RandomDiscPositionAllocator> ueDiscPositionAlloc =
-        CreateObject<RandomDiscPositionAllocator>();
-    ueDiscPositionAlloc->SetX(0.0);
-    ueDiscPositionAlloc->SetY(0.0);
-    ueDiscPositionAlloc->SetZ(ueHeight);
-    double radius = ueRadius > 0 ? ueRadius : (numSites > 1 ? isd : 1.0);
-    // RandomDiscPositionAllocator exposes the radius through the Rho attribute
-    Ptr<UniformRandomVariable> rho = CreateObject<UniformRandomVariable>();
-    rho->SetAttribute("Min", DoubleValue(0.0));
-    rho->SetAttribute("Max", DoubleValue(radius));
-    ueDiscPositionAlloc->SetAttribute("Rho", PointerValue(rho));
-    mobility.SetPositionAllocator(ueDiscPositionAlloc);
+    if (g_uePerCell > 0)
+    {
+        // One independent disc per site: every cell then carries the same traffic,
+        // which is what turns the outer rings into a real interference source.
+        Ptr<ListPositionAllocator> ueSitePos = CreateObject<ListPositionAllocator>();
+        Ptr<UniformRandomVariable> urv = CreateObject<UniformRandomVariable>();
+        urv->SetAttribute("Min", DoubleValue(0.0));
+        urv->SetAttribute("Max", DoubleValue(1.0));
+        const double cellRadius = ueRadius > 0 ? ueRadius : isd / 2.0;
+        for (uint32_t site = 0; site < numSites; ++site)
+        {
+            for (uint32_t k = 0; k < sectorsPerSite; ++k)
+            {
+                // Each sector gets exactly g_uePerCell UEs inside its own +-60 deg
+                // wedge, so "UE per cell" is exact instead of a binomial draw.
+                const double bearing = 2.0 * M_PI * k / sectorsPerSite;
+                for (uint32_t j = 0; j < g_uePerCell; ++j)
+                {
+                    // sqrt() keeps the drop uniform over the disc area
+                    const double rhoUe = cellRadius * std::sqrt(urv->GetValue());
+                    const double angUe =
+                        bearing + (urv->GetValue() - 0.5) * (2.0 * M_PI / sectorsPerSite);
+                    ueSitePos->Add(Vector(g_sitePos[site].x + rhoUe * std::cos(angUe),
+                                          g_sitePos[site].y + rhoUe * std::sin(angUe),
+                                          ueHeight));
+                }
+            }
+        }
+        mobility.SetPositionAllocator(ueSitePos);
+        std::cout << "[P4.2] " << ueNodes.GetN() << " UE(s) dropped in " << numSites
+                  << " disc(s) of radius " << cellRadius << " m" << std::endl;
+    }
+    else
+    {
+        Ptr<RandomDiscPositionAllocator> ueDiscPositionAlloc =
+            CreateObject<RandomDiscPositionAllocator>();
+        ueDiscPositionAlloc->SetX(0.0);
+        ueDiscPositionAlloc->SetY(0.0);
+        ueDiscPositionAlloc->SetZ(ueHeight);
+        double radius = ueRadius > 0 ? ueRadius : (numSites > 1 ? isd : 1.0);
+        // RandomDiscPositionAllocator exposes the radius through the Rho attribute
+        Ptr<UniformRandomVariable> rho = CreateObject<UniformRandomVariable>();
+        rho->SetAttribute("Min", DoubleValue(0.0));
+        rho->SetAttribute("Max", DoubleValue(radius));
+        ueDiscPositionAlloc->SetAttribute("Rho", PointerValue(rho));
+        mobility.SetPositionAllocator(ueDiscPositionAlloc);
+    }
 
     for (uint32_t i = 0; i < ueNodes.GetN(); i++)
     {
@@ -952,7 +1287,11 @@ main(int argc, char* argv[])
                   << bearingDeg << " deg (" << bearingRad << " rad)" << std::endl;
     }
     g_gnbDevices = gNbNetDev;
+    BuildCenterSets(numSites, sectorsPerSite);
     ReportSectorBearings(numSites, sectorsPerSite);
+    std::cout << "[SCOPE] sites=" << numSites << " cells=" << (numSites * sectorsPerSite)
+              << " measured cells=" << g_centerCellIds.size()
+              << " (statsRings=" << g_statsRings << ")" << std::endl;
     NetDeviceContainer ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
     NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps);
     NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps);
@@ -1034,6 +1373,23 @@ main(int argc, char* argv[])
         nrHelper->AttachToClosestEnb(ueVrNetDev, gNbNetDev);
         nrHelper->AttachToClosestEnb(ueCgNetDev, gNbNetDev);
     }
+
+    // P4.2: remember the IPs of the measured UEs - only after the attach step does
+    // IsCenterUe() know which site a UE actually belongs to.  The FlowMonitor XML
+    // export drops the addresses, so the centre-only L2 counters are built here.
+    auto collectCenterIps = [](NetDeviceContainer& nd, Ipv4InterfaceContainer& ip) {
+        for (uint32_t j = 0; j < nd.GetN(); ++j)
+        {
+            if (IsCenterUe(nd.Get(j)->GetNode()->GetId()))
+            {
+                g_centerUeIps.insert(ip.GetAddress(j, 0).Get());
+            }
+        }
+    };
+    collectCenterIps(ueArNetDev, ueArIpIface);
+    collectCenterIps(ueVrNetDev, ueVrIpIface);
+    collectCenterIps(ueCgNetDev, ueCgIpIface);
+    std::cout << "[SCOPE] measured UE IPs=" << g_centerUeIps.size() << std::endl;
 
     // Install sink application
     ApplicationContainer serverApps;
@@ -1182,7 +1538,16 @@ main(int argc, char* argv[])
     FlowMonitorHelper flowmonHelper;
     NodeContainer endpointNodes;
     endpointNodes.Add(remoteHost);
-    endpointNodes.Add(ueNodes);
+    for (uint32_t j = 0; j < ueNodes.GetN(); ++j)
+    {
+        // P4.2: same scope as L1/L5, otherwise the IP loss would mix cells.
+        if (IsCenterUe(ueNodes.Get(j)->GetId()))
+        {
+            endpointNodes.Add(ueNodes.Get(j));
+        }
+    }
+    std::cout << "[SCOPE] measured UEs=" << g_centerUeCount << ", unmeasured (outer) UEs="
+              << g_outerUeCount << std::endl;
 
     Ptr<ns3::FlowMonitor> monitor = flowmonHelper.Install(endpointNodes);
     monitor->SetAttribute("DelayBinWidth", DoubleValue(0.0001));
@@ -1260,11 +1625,32 @@ main(int argc, char* argv[])
     double averageFlowThroughput = 0.0;
     double averageFlowDelay = 0.0;
 
+    // L2 counters limited to the measured (centre) UEs: video is every flow that is
+    // not the SR model port 5000.
+    uint64_t l2VideoTx = 0;
+    uint64_t l2VideoRx = 0;
+    uint64_t l2ModelTx = 0;
+    uint64_t l2ModelRx = 0;
+
     for (std::map<FlowId, FlowMonitor::FlowStats>::const_iterator i = stats.begin();
          i != stats.end();
          ++i)
     {
         Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow(i->first);
+        if (g_statsRings >= 0 && g_centerUeIps.find(t.destinationAddress.Get()) == g_centerUeIps.end())
+        {
+            continue; // flow of an unmeasured UE: it still exists, it is just not counted
+        }
+        if (t.destinationPort == 5000)
+        {
+            l2ModelTx += i->second.txPackets;
+            l2ModelRx += i->second.rxPackets;
+        }
+        else
+        {
+            l2VideoTx += i->second.txPackets;
+            l2VideoRx += i->second.rxPackets;
+        }
         std::stringstream protoStream;
         protoStream << (uint16_t)t.protocol;
         if (t.protocol == 6)
@@ -1309,6 +1695,19 @@ main(int argc, char* argv[])
             std::cout << "  Mean jitter: 0 ms\n";
         }
         std::cout << "  Rx Packets: " << i->second.rxPackets << "\n";
+    }
+
+    {
+        std::ofstream l2("flowmon_center.csv");
+        l2 << "metric,value\n";
+        l2 << "video_tx_packets," << l2VideoTx << "\n";
+        l2 << "video_rx_packets," << l2VideoRx << "\n";
+        l2 << "model_tx_packets," << l2ModelTx << "\n";
+        l2 << "model_rx_packets," << l2ModelRx << "\n";
+        l2 << "measured_ues," << g_centerUeIps.size() << "\n";
+        std::cout << "[L2] centre-only video tx/rx=" << l2VideoTx << "/" << l2VideoRx << " model "
+                  << l2ModelTx << "/" << l2ModelRx << " (" << g_centerUeIps.size()
+                  << " UE IPs)" << std::endl;
     }
 
     std::cout << "\n\n  Mean flow throughput: " << averageFlowThroughput / stats.size()

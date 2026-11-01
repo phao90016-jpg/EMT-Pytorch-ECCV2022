@@ -75,6 +75,19 @@ def main():
     frames = read_csv_rows(os.path.join(d, "frame_stats_port*_ue*.csv"))
     drops = read_csv_rows(os.path.join(d, "rlc_drops.csv"))
     video_ip, model_ip = read_ip(os.path.join(d, "rtsr-flowmon.xml"))
+    # P4.2: when only the centre cells are measured the simulation writes the
+    # centre-only L2 counters separately - the FlowMonitor XML export drops the
+    # addresses, so it cannot be filtered after the fact.
+    center = read_kv(os.path.join(d, "flowmon_center.csv"))
+    if center:
+        video_ip = {
+            "tx": int(center.get("video_tx_packets", 0)),
+            "rx": int(center.get("video_rx_packets", 0)),
+        }
+        model_ip = {
+            "tx": int(center.get("model_tx_packets", 0)),
+            "rx": int(center.get("model_rx_packets", 0)),
+        }
     mac = read_kv(os.path.join(d, "mac_tb.csv"))
     phy = read_kv(os.path.join(d, "phy_tb.csv"))
     src = read_kv(os.path.join(d, "source_frames.csv"))
