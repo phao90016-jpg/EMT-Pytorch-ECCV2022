@@ -100,7 +100,7 @@ static uint32_t g_centerUeCount = 0;
 static uint32_t g_outerUeCount = 0;
 // ---- P5.1: indoor / outdoor split ----
 static uint32_t g_indoorUeCount = 0;
-static std::vector<uint32_t> g_ueIndoor; // flag per UE node index (0 = outdoor)
+static std::set<uint32_t> g_indoorUeNodes; // node ids of the indoor UEs
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -292,7 +292,8 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
     {
         const uint64_t tbKey = (static_cast<uint64_t>(cellId) << 48) |
                                (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
-                               (static_cast<uint64_t>(info.m_slotNum) << 16) | info.m_rnti;
+                               (static_cast<uint64_t>(info.m_slotNum & 0xff) << 24) |
+                               (static_cast<uint64_t>(info.m_symStart) << 16) | info.m_rnti;
         if (!g_macTbKeys.insert(tbKey).second)
         {
             ++g_macDuplicateEvents;
@@ -311,9 +312,12 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
 static void
 OnRxPacketTraceUe(RxPacketTraceParams params)
 {
+    // (cell, frame, slot, symbol, rnti): one TB per allocation, and a UE may get
+    // more than one allocation in the same slot.
     const uint64_t tbKey = (static_cast<uint64_t>(params.m_cellId) << 48) |
                            (static_cast<uint64_t>(params.m_frameNum & 0xffff) << 32) |
-                           (static_cast<uint64_t>(params.m_slotNum) << 16) | params.m_rnti;
+                           (static_cast<uint64_t>(params.m_slotNum & 0xff) << 24) |
+                           (static_cast<uint64_t>(params.m_symStart) << 16) | params.m_rnti;
     if (g_statsRings >= 0 &&
         g_centerCellIds.find(static_cast<uint16_t>(params.m_cellId)) == g_centerCellIds.end())
     {
@@ -1371,12 +1375,12 @@ main(int argc, char* argv[])
     NetDeviceContainer ueArNetDev;
     if (indoorRatio > 0.0)
     {
-        NS_ABORT_MSG_IF(ueVrNum > 0 || ueCgNum > 0,
+        NS_ABORT_MSG_IF(vrUeNum > 0 || cgUeNum > 0,
                         "indoorRatio currently supports only the AR container "
                         "(use --vrUeNum=0 --cgUeNum=0)");
         NodeContainer ueOutdoorContainer;
         NodeContainer ueIndoorContainer;
-        g_ueIndoor.assign(ueNodes.GetN(), 0);
+        g_indoorUeNodes.clear();
         Ptr<UniformRandomVariable> indoorDraw = CreateObject<UniformRandomVariable>();
         indoorDraw->SetAttribute("Min", DoubleValue(0.0));
         indoorDraw->SetAttribute("Max", DoubleValue(1.0));
@@ -1385,7 +1389,7 @@ main(int argc, char* argv[])
             if (indoorDraw->GetValue() < indoorRatio)
             {
                 ueIndoorContainer.Add(ueArContainer.Get(j));
-                g_ueIndoor[ueArContainer.Get(j)->GetId()] = 1;
+                g_indoorUeNodes.insert(ueArContainer.Get(j)->GetId());
             }
             else
             {
@@ -1406,7 +1410,7 @@ main(int argc, char* argv[])
         uint32_t inIdx = 0;
         for (uint32_t j = 0; j < ueArContainer.GetN(); ++j)
         {
-            if (g_ueIndoor[ueArContainer.Get(j)->GetId()])
+            if (g_indoorUeNodes.count(ueArContainer.Get(j)->GetId()) > 0)
             {
                 ueArNetDev.Add(inDev.Get(inIdx++));
             }
