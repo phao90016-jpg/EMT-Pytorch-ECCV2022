@@ -1,9 +1,9 @@
 metric,value
-scheduled_tbs,13877
-scheduled_bytes,198650197
-retransmissions,455
+scheduled_tbs,10941
+scheduled_bytes,166811835
+retransmissions,245
 measured_cells,21
-all_dlscheduling_events,15342
+all_dlscheduling_events,11501
 dropped_tbsize_zero,0
 dropped_stream_gt0,0
-duplicate_dci_events,1465
+duplicate_dci_events,560

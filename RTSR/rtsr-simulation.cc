@@ -98,6 +98,9 @@ static std::set<uint16_t> g_centerCellIds;            // their cell ids
 static std::map<uint32_t, uint32_t> g_ueServingSite;  // UE node id -> site index
 static uint32_t g_centerUeCount = 0;
 static uint32_t g_outerUeCount = 0;
+// ---- P5.1: indoor / outdoor split ----
+static uint32_t g_indoorUeCount = 0;
+static std::vector<uint32_t> g_ueIndoor; // flag per UE node index (0 = outdoor)
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -705,6 +708,37 @@ ConfigureXrApp(NodeContainer& ueContainer,
     clientApps.Add(currentUeClientApps);
 }
 
+// ---- P5.1: constant-gain antenna ----
+// Used as the "indoor" UE antenna: the 20 dB penetration loss is applied as a
+// negative receive gain, which attenuates the wanted signal and the interference
+// alike and therefore leaves an indoor UE's SINR roughly unchanged while it needs
+// about 20 dB more resources.
+class FixedGainAntenna : public AntennaModel
+{
+  public:
+    static TypeId GetTypeId()
+    {
+        static TypeId tid = TypeId("ns3::FixedGainAntenna")
+                                .SetParent<AntennaModel>()
+                                .SetGroupName("Antenna")
+                                .AddConstructor<FixedGainAntenna>()
+                                .AddAttribute("GainDb",
+                                              "Constant antenna gain in dB",
+                                              DoubleValue(0.0),
+                                              MakeDoubleAccessor(&FixedGainAntenna::m_gainDb),
+                                              MakeDoubleChecker<double>());
+        return tid;
+    }
+
+    double GetGainDb(Angles a) override
+    {
+        return m_gainDb;
+    }
+
+  private:
+    double m_gainDb{0.0};
+};
+
 // ---- P4.2: lattice, scope helpers ----
 
 // Hexagonal site lattice: ring 0 = the centre, then 6, 12, 18 ... sites per ring,
@@ -952,6 +986,8 @@ main(int argc, char* argv[])
     int32_t siteRings = -1;
     int32_t statsRings = -1;
     uint32_t uePerCell = 0;
+    double indoorRatio = 0.0;
+    double indoorPenaltyDb = 20.0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1023,6 +1059,11 @@ main(int argc, char* argv[])
                  "If > 0, drop this many UEs per sector around every site instead of one "
                  "disc of UEs around the centre (P4.2)",
                  uePerCell);
+    cmd.AddValue("indoorRatio",
+                 "Fraction of UEs placed indoors (P5.1).  Indoors UEs get an extra "
+                 "penetration loss; 0 disables the split.",
+                 indoorRatio);
+    cmd.AddValue("indoorPenaltyDb", "Penetration loss for indoor UEs in dB", indoorPenaltyDb);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
@@ -1324,7 +1365,64 @@ main(int argc, char* argv[])
     std::cout << "[SCOPE] sites=" << numSites << " cells=" << (numSites * sectorsPerSite)
               << " measured cells=" << g_centerCellIds.size()
               << " (statsRings=" << g_statsRings << ")" << std::endl;
-    NetDeviceContainer ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
+    // ---- P5.1: install the AR UEs in an outdoor and an indoor batch ----
+    // The UE antenna is created inside InstallUeDevice from the helper factory, so
+    // the penetration loss has to be set between the two batches.
+    NetDeviceContainer ueArNetDev;
+    if (indoorRatio > 0.0)
+    {
+        NS_ABORT_MSG_IF(ueVrNum > 0 || ueCgNum > 0,
+                        "indoorRatio currently supports only the AR container "
+                        "(use --vrUeNum=0 --cgUeNum=0)");
+        NodeContainer ueOutdoorContainer;
+        NodeContainer ueIndoorContainer;
+        g_ueIndoor.assign(ueNodes.GetN(), 0);
+        Ptr<UniformRandomVariable> indoorDraw = CreateObject<UniformRandomVariable>();
+        indoorDraw->SetAttribute("Min", DoubleValue(0.0));
+        indoorDraw->SetAttribute("Max", DoubleValue(1.0));
+        for (uint32_t j = 0; j < ueArContainer.GetN(); ++j)
+        {
+            if (indoorDraw->GetValue() < indoorRatio)
+            {
+                ueIndoorContainer.Add(ueArContainer.Get(j));
+                g_ueIndoor[ueArContainer.Get(j)->GetId()] = 1;
+            }
+            else
+            {
+                ueOutdoorContainer.Add(ueArContainer.Get(j));
+            }
+        }
+        g_indoorUeCount = ueIndoorContainer.GetN();
+        nrHelper->SetUeAntennaAttribute("AntennaElement",
+                                        PointerValue(CreateObject<IsotropicAntennaModel>()));
+        NetDeviceContainer outDev = nrHelper->InstallUeDevice(ueOutdoorContainer, allBwps);
+        Ptr<FixedGainAntenna> indoorAntenna = CreateObject<FixedGainAntenna>();
+        indoorAntenna->SetAttribute("GainDb", DoubleValue(-indoorPenaltyDb));
+        nrHelper->SetUeAntennaAttribute("AntennaElement", PointerValue(indoorAntenna));
+        NetDeviceContainer inDev = nrHelper->InstallUeDevice(ueIndoorContainer, allBwps);
+        // Reassemble in the original UE order: everything downstream (IP assignment,
+        // attach, applications) indexes ueArNetDev by the UE index.
+        uint32_t outIdx = 0;
+        uint32_t inIdx = 0;
+        for (uint32_t j = 0; j < ueArContainer.GetN(); ++j)
+        {
+            if (g_ueIndoor[ueArContainer.Get(j)->GetId()])
+            {
+                ueArNetDev.Add(inDev.Get(inIdx++));
+            }
+            else
+            {
+                ueArNetDev.Add(outDev.Get(outIdx++));
+            }
+        }
+        std::cout << "[P5.1] indoor UEs = " << g_indoorUeCount << " / " << ueArContainer.GetN()
+                  << " (" << (100.0 * g_indoorUeCount / ueArContainer.GetN())
+                  << " %), penetration loss " << indoorPenaltyDb << " dB" << std::endl;
+    }
+    else
+    {
+        ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
+    }
     NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps);
     NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps);
 

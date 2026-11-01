@@ -135,11 +135,15 @@ def main():
     dropped_frames = set(int(r["frame_id"]) for r in drops) if drops else set()
     incomplete_ids = set(int(r["frame_id"]) for r in frames if r["complete"] != "1")
     failed_ids = dropped_frames | incomplete_ids
-    fsr_paper = pct(frames_sent - len(failed_ids), frames_sent)
+    # Frames the sink never saw at all are lost too - they used to be invisible here
+    # (the sink only opens a record on the first arriving packet), which made this
+    # line read 100% while the L1 FSR was lower.
+    failed_total = len(failed_ids) + fully_dropped
+    fsr_paper = pct(frames_sent - failed_total, frames_sent)
     L.append(f"| L1 应用 | 帧丢失率 | **{frame_loss:.2f}%** | 不完整帧占比 |")
     L.append(f"| **P3 帧级** | **FSR（BS 等待口径）** | **{fsr_paper:.2f}%** | "
-             f"超时帧 {len(dropped_frames)} + 不完整帧 {len(incomplete_ids)} = "
-             f"{len(failed_ids)} / {frames_sent} |")
+             f"超时帧 {len(dropped_frames)} + 不完整帧 {len(incomplete_ids)} + "
+             f"整帧全丢 {fully_dropped} = {failed_total} / {frames_sent} |")
     L.append(f"| P3 对照 | FSR（端到端口径） | {fsr:.2f}% | 含空口传输时间，偏严 |")
     L.append(f"| L2 IP | 视频包 tx / rx | {ip_tx} / {ip_rx} | 丢 {ip_lost}（**{l2_loss:.3f}%**） |")
     if model_ip:
