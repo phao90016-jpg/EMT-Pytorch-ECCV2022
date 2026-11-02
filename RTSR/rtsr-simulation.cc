@@ -277,6 +277,18 @@ struct UePhyStat
 // RNTIs are handed out per cell starting from 1, so the map key is
 // (cellId << 16) | rnti - a bare RNTI would merge UEs of different cells.
 static std::map<uint64_t, UePhyStat> g_uePhyStats;
+// Wideband DL-control SINR: fired once per PDCCH reception with the SINR averaged over
+// every RB that carried control, so it does not depend on a TB's RB allocation.  This
+// is the metric used to resolve the mobility effect (per-TB SINR cannot: a stationary
+// UE already shows a ~36 dB spread purely from which RBs each TB got).
+static double g_ctrlSinrSum = 0.0;
+static uint64_t g_ctrlSinrCount = 0;
+static std::map<int, std::pair<double, uint64_t>> g_ctrlSinrBuckets; // 1 s buckets
+// Wideband DL *data* SINR: fired with the SINR averaged over every RB of the band, so
+// unlike the per-TB value it does not depend on which RBs the TB was given.
+static double g_wbSinrSum = 0.0;
+static uint64_t g_wbSinrCount = 0;
+static std::map<int, std::pair<double, uint64_t>> g_wbSinrBuckets; // 1 s buckets
 // Same idea on the MAC side: one UE gets at most one DL TB per slot, so
 // (cell, frame, slot, rnti) identifies a TB and reveals duplicated DCI traces.
 static std::set<uint64_t> g_macTbKeys;
@@ -312,6 +324,59 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
         {
             ++g_macRetx;
         }
+    }
+}
+
+static void
+OnDlCtrlSinr(uint16_t cellId, uint16_t rnti, double sinrLinear, uint16_t bwpId, uint8_t streamId)
+{
+    if (streamId > 0 || sinrLinear <= 0.0)
+    {
+        return;
+    }
+    // No cell filter here: the trace is connected only to the measured UEs, and
+    // NrUePhy::GetCellId() does not necessarily equal the serving cell id for a UE PHY
+    // (filtering on it silently dropped every sample).
+    if (g_refCellId == UINT16_MAX)
+    {
+        g_refCellId = cellId;
+        g_refRnti = rnti;
+        std::cout << "[P5.3] first DL-ctrl SINR event: cellId=" << cellId << " rnti=" << rnti
+                  << " sinr=" << (10.0 * std::log10(sinrLinear)) << " dB" << std::endl;
+    }
+    const double sinrDb = 10.0 * std::log10(sinrLinear);
+    g_ctrlSinrSum += sinrDb;
+    ++g_ctrlSinrCount;
+    if (cellId == g_refCellId && rnti == g_refRnti)
+    {
+        auto& bucket =
+            g_ctrlSinrBuckets[static_cast<int>(Simulator::Now().GetMilliSeconds() / 1000.0)];
+        bucket.first += sinrDb;
+        ++bucket.second;
+    }
+}
+
+static void
+OnDlDataSinr(uint16_t cellId, uint16_t rnti, double sinrLinear, uint16_t bwpId, uint8_t streamId)
+{
+    if (streamId > 0 || sinrLinear <= 0.0)
+    {
+        return;
+    }
+    if (g_refCellId == UINT16_MAX)
+    {
+        g_refCellId = cellId;
+        g_refRnti = rnti;
+    }
+    const double sinrDb = 10.0 * std::log10(sinrLinear);
+    g_wbSinrSum += sinrDb;
+    ++g_wbSinrCount;
+    if (cellId == g_refCellId && rnti == g_refRnti)
+    {
+        auto& bucket =
+            g_wbSinrBuckets[static_cast<int>(Simulator::Now().GetMilliSeconds() / 1000.0)];
+        bucket.first += sinrDb;
+        ++bucket.second;
     }
 }
 
@@ -403,8 +468,16 @@ DumpMacPhy()
               << " dropped_tbsize0=" << g_macTbSizeZero
               << " dropped_stream>0=" << g_macStreamGt0
               << " duplicate_dci=" << g_macDuplicateEvents << std::endl;
+    const double ctrlSinr = g_ctrlSinrCount ? g_ctrlSinrSum / g_ctrlSinrCount : 0.0;
+    phy << "wideband_ctrl_sinr_db," << ctrlSinr << "\n";
+    phy << "wideband_ctrl_sinr_samples," << g_ctrlSinrCount << "\n";
+    const double wbSinr = g_wbSinrCount ? g_wbSinrSum / g_wbSinrCount : 0.0;
+    phy << "wideband_data_sinr_db," << wbSinr << "\n";
+    phy << "wideband_data_sinr_samples," << g_wbSinrCount << "\n";
     std::cout << "[PHY] rx TBs=" << g_phyTbs << " corrupt=" << g_phyCorrupt << " BLER=" << bler
-              << "% meanSINR=" << meanSinr << " dB" << std::endl;
+              << "% meanSINR=" << meanSinr << " dB | wideband DL-ctrl SINR=" << ctrlSinr
+              << " dB (" << g_ctrlSinrCount << " samples) | wideband DL-data SINR=" << wbSinr
+              << " dB (" << g_wbSinrCount << " samples)" << std::endl;
 
     // Per-UE breakdown: SINR spread shows whether the scenario is interference
     // limited (wide spread, low tail) or merely noise limited (all UEs high).
@@ -488,9 +561,22 @@ TryConnectMacPhy()
             continue;
         }
         Ptr<NrSpectrumPhy> specPhy = uePhy->GetSpectrumPhy(0);
+        bool ok = false;
         if (specPhy &&
             specPhy->TraceConnectWithoutContext("RxPacketTraceUe",
                                                 MakeCallback(&OnRxPacketTraceUe)))
+        {
+            ok = true;
+        }
+        if (uePhy->TraceConnectWithoutContext("DlCtrlSinr", MakeCallback(&OnDlCtrlSinr)))
+        {
+            ok = true;
+        }
+        if (uePhy->TraceConnectWithoutContext("DlDataSinr", MakeCallback(&OnDlDataSinr)))
+        {
+            ok = true;
+        }
+        if (ok)
         {
             ++connected;
         }
@@ -1938,6 +2024,42 @@ main(int argc, char* argv[])
                       << " km/h over " << elapsed << " s (mean displacement "
                       << (moved / counted) << " m)" << std::endl;
         }
+    }
+    if (!g_wbSinrBuckets.empty())
+    {
+        std::ofstream wb("wb_data_sinr_buckets.csv");
+        wb << "bucket_s,mean_sinr_db,samples\n";
+        double bMin = 1e9;
+        double bMax = -1e9;
+        std::cout << "[P5.3] wideband DL-data SINR of ref UE cell=" << g_refCellId
+                  << " rnti=" << g_refRnti << " (1 s buckets):";
+        for (const auto& b : g_wbSinrBuckets)
+        {
+            const double mean = b.second.first / b.second.second;
+            bMin = std::min(bMin, mean);
+            bMax = std::max(bMax, mean);
+            wb << b.first << "," << mean << "," << b.second.second << "\n";
+            std::cout << " " << b.first << "s=" << mean;
+        }
+        std::cout << " (spread " << (bMax - bMin) << " dB)" << std::endl;
+    }
+    if (!g_ctrlSinrBuckets.empty())
+    {
+        std::ofstream cb("ctrl_sinr_buckets.csv");
+        cb << "bucket_s,mean_sinr_db,samples\n";
+        double bMin = 1e9;
+        double bMax = -1e9;
+        std::cout << "[P5.3] wideband DL-ctrl SINR of ref UE cell=" << g_refCellId
+                  << " rnti=" << g_refRnti << " (1 s buckets):";
+        for (const auto& b : g_ctrlSinrBuckets)
+        {
+            const double mean = b.second.first / b.second.second;
+            bMin = std::min(bMin, mean);
+            bMax = std::max(bMax, mean);
+            cb << b.first << "," << mean << "," << b.second.second << "\n";
+            std::cout << " " << b.first << "s=" << mean;
+        }
+        std::cout << " (spread " << (bMax - bMin) << " dB)" << std::endl;
     }
     if (!g_sinrTrace.empty())
     {
