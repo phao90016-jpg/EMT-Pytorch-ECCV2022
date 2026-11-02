@@ -107,6 +107,15 @@ static std::vector<std::pair<double, double>> g_sinrTrace; // (time_ms, sinr_db)
 static uint16_t g_refCellId = UINT16_MAX;
 static uint16_t g_refRnti = UINT16_MAX;
 static uint32_t g_sinrTraceCap = 20000;
+// ---- P6: checkpointing ----
+// ns-3 has no way to save/restore a running simulation, so a long run that dies is
+// lost.  Flushing every statistic periodically at least leaves the data up to the last
+// checkpoint on disk; checkpoint.txt says how far the run got and whether it finished.
+static uint32_t g_checkpointMs = 0;
+static uint32_t g_checkpointsWritten = 0;
+// P6: warm-up - the frame sinks (and therefore the FSR denominators) start this much
+// after the traffic sources, so the cell-search / RRC phase is not counted.
+static uint32_t g_warmupMs = 0;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -182,7 +191,25 @@ RlcDropCallback(std::string context, Ptr<const Packet> p)
 }
 
 // Connect the gNB RLC TxDrop trace once the DRB exists; retry until it does.
-// Apply a TDD pattern to every gNB PHY. Accepts "DDDSU" or "DL|DL|DL|S|UL".
+// Convert "DDDSU" into the PHY's attribute format "DL|DL|DL|S|UL".
+static std::string
+ConvertTddPattern(const std::string& in)
+{
+    if (in.find('|') != std::string::npos)
+    {
+        return in;
+    }
+    std::string conv;
+    for (char c : in)
+    {
+        std::string tok = (c == 'D') ? "DL" : (c == 'U') ? "UL" : (c == 'S') ? "S" : "F";
+        conv += (conv.empty() ? "" : "|") + tok;
+    }
+    return conv;
+}
+
+// Read back the pattern of every gNB PHY (verification only - setting it must happen
+// through the helper attribute before the PHY is created).
 static void
 ApplyTddPattern()
 {
@@ -214,13 +241,13 @@ ApplyTddPattern()
         {
             continue;
         }
-        phy->SetPattern(pattern);
-        ++applied;
         if (i == 0)
         {
-            std::cout << "[TDD] " << g_tddPattern << " -> " << pattern << " (slot period "
+            std::cout << "[TDD] requested " << g_tddPattern << " -> " << pattern
+                      << ", PHY reports " << phy->GetPattern() << " (slot period "
                       << phy->GetSlotPeriod() << ")" << std::endl;
         }
+        ++applied;
     }
     std::cout << "[TDD] applied to " << applied << " gNB PHY(s)" << std::endl;
 }
@@ -438,7 +465,7 @@ OnRxPacketTraceUe(RxPacketTraceParams params)
 }
 
 static void
-DumpMacPhy()
+DumpMacPhy(bool announce)
 {
     std::ofstream mac("mac_tb.csv");
     mac << "metric,value\n";
@@ -463,6 +490,10 @@ DumpMacPhy()
     mac << "dropped_tbsize_zero," << g_macTbSizeZero << "\n";
     mac << "dropped_stream_gt0," << g_macStreamGt0 << "\n";
     mac << "duplicate_dci_events," << g_macDuplicateEvents << "\n";
+    if (!announce)
+    {
+        return;
+    }
     std::cout << "[MAC] scheduled TBs=" << g_macTbs << " bytes=" << g_macTbBytes
               << " retx=" << g_macRetx << " | all_events=" << g_macAllEvents
               << " dropped_tbsize0=" << g_macTbSizeZero
@@ -610,8 +641,44 @@ TryConnectMacPhy()
 // The frame sinks can only count frames of which something arrived.  The measured
 // total is what the sources had sent when the sinks stopped, written here so that
 // layer_stats.py can use it as the FSR denominator.
+static void DumpMacPhy(bool announce);
+static void DumpRlcDrops(bool announce);
+static void DumpSourceFrames(bool announce);
+
 static void
-DumpSourceFrames()
+WriteCheckpointMarker(bool complete)
+{
+    std::ofstream st("checkpoint.txt");
+    st << "simulated_ms," << Simulator::Now().GetMilliSeconds() << "\n";
+    st << "planned_ms," << g_appDurationMs << "\n";
+    st << "checkpoints," << g_checkpointsWritten << "\n";
+    st << "complete," << (complete ? 1 : 0) << "\n";
+}
+
+static void
+Checkpoint()
+{
+    ++g_checkpointsWritten;
+    for (uint32_t i = 0; i < g_frameSinks.GetN(); ++i)
+    {
+        Ptr<XrFrameSink> sink = DynamicCast<XrFrameSink>(g_frameSinks.Get(i));
+        if (sink)
+        {
+            sink->FlushCsv();
+        }
+    }
+    DumpMacPhy(false);
+    DumpRlcDrops(false);
+    DumpSourceFrames(false);
+    WriteCheckpointMarker(false);
+    if (g_checkpointMs > 0 && Simulator::Now() < MilliSeconds(g_appDurationMs))
+    {
+        Simulator::Schedule(MilliSeconds(g_checkpointMs), &Checkpoint);
+    }
+}
+
+static void
+DumpSourceFrames(bool announce)
 {
     uint64_t sent = 0;
     uint64_t seen = 0;
@@ -632,13 +699,17 @@ DumpSourceFrames()
     out << "frames_within_pdb," << inPdb << "\n";
     out << "frames_never_seen," << (sent > seen ? sent - seen : 0) << "\n";
     const double fsr = sent ? (100.0 * inPdb / sent) : 0.0;
+    if (!announce)
+    {
+        return;
+    }
     std::cout << "[FRAMES] sent(by source)=" << sent << " seen(by sink)=" << seen
               << " never_seen=" << (sent > seen ? sent - seen : 0) << " complete=" << complete
               << " within_pdb=" << inPdb << " FSR=" << fsr << "%" << std::endl;
 }
 
 static void
-DumpRlcDrops()
+DumpRlcDrops(bool announce)
 {
     std::ofstream out("rlc_drops.csv");
     out << "frame_id,dropped_sdus\n";
@@ -651,6 +722,10 @@ DumpRlcDrops()
     scope << "kept_dropped_sdus," << g_rlcDrops << "\n";
     scope << "outside_scope_dropped_sdus," << g_rlcDropsOutside << "\n";
     scope << "unparsed_events," << g_rlcUnparsed << "\n";
+    if (!announce)
+    {
+        return;
+    }
     std::cout << "[RLC] events=" << g_rlcDrops << " attributed=" << g_rlcAttributed
               << " distinct_pkts=" << g_rlcDistinct.size()
               << " frames_touched=" << g_rlcDropsPerFrame.size()
@@ -1098,6 +1173,8 @@ main(int argc, char* argv[])
     double indoorRatio = 0.0;
     double indoorPenaltyDb = 20.0;
     double ueSpeedKmh = 0.0;
+    uint32_t checkpointMs = 0;
+    uint32_t warmupMs = 0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1174,6 +1251,14 @@ main(int argc, char* argv[])
                  "penetration loss; 0 disables the split.",
                  indoorRatio);
     cmd.AddValue("indoorPenaltyDb", "Penetration loss for indoor UEs in dB", indoorPenaltyDb);
+    cmd.AddValue("warmupMs",
+                 "Exclude the first N ms from the frame statistics (warm-up: attach and "
+                 "RRC setup); the traffic itself starts earlier (P6)",
+                 warmupMs);
+    cmd.AddValue("checkpointEveryMs",
+                 "If > 0, flush every statistic to disk this often (ms) so a killed run "
+                 "still leaves data; ns-3 cannot resume a run (P6)",
+                 checkpointMs);
     cmd.AddValue("ueSpeedKmh",
                  "UE speed in km/h with a random direction per UE; 0 = stationary (P5.2)",
                  ueSpeedKmh);
@@ -1188,6 +1273,8 @@ main(int argc, char* argv[])
     g_siteRings = siteRings;
     g_statsRings = statsRings;
     g_uePerCell = uePerCell;
+    g_checkpointMs = checkpointMs;
+    g_warmupMs = warmupMs;
     if (g_siteRings >= 0)
     {
         numSites = 1 + 3 * static_cast<uint32_t>(g_siteRings) *
@@ -1283,6 +1370,15 @@ main(int argc, char* argv[])
     nrHelper->SetGnbPhyAttribute("TxPower", DoubleValue(txPower));
     nrHelper->SetGnbPhyAttribute("Numerology", UintegerValue(numerology));
     nrHelper->SetGnbPhyAttribute("NoiseFigure", DoubleValue(nfGnb));
+    if (!g_tddPattern.empty())
+    {
+        // Must be an attribute: re-configuring the PHY after it started scheduling
+        // slots (which is what a scheduled SetPattern at t=0 does) makes the PHY
+        // schedule events in the past and aborts with "Negative delay".
+        const std::string pattern = ConvertTddPattern(g_tddPattern);
+        nrHelper->SetGnbPhyAttribute("Pattern", StringValue(pattern));
+        std::cout << "[TDD] helper pattern = " << pattern << std::endl;
+    }
     nrHelper->SetUePhyAttribute("TxPower", DoubleValue(23));
     nrHelper->SetUePhyAttribute("NoiseFigure", DoubleValue(nfUe));
 
@@ -1809,7 +1905,13 @@ main(int argc, char* argv[])
     clientApps.Start(MilliSeconds(appStartTimeMs));
     if (g_frameSinks.GetN() > 0)
     {
-        g_frameSinks.Start(MilliSeconds(appStartTimeMs));
+        g_frameSinks.Start(MilliSeconds(appStartTimeMs + g_warmupMs));
+        if (g_warmupMs > 0)
+        {
+            std::cout << "[P6] warm-up " << g_warmupMs
+                      << " ms excluded; frame statistics window starts at "
+                      << (appStartTimeMs + g_warmupMs) << " ms" << std::endl;
+        }
         g_frameSinks.Stop(MilliSeconds(simTimeMs - 1));
     }
     serverApps.Stop(MilliSeconds(simTimeMs));
@@ -1882,13 +1984,20 @@ main(int argc, char* argv[])
         Simulator::Schedule(MilliSeconds(300), &TryConnectMacPhy);
     }
 
+    if (g_checkpointMs > 0)
+    {
+        std::cout << "[P6] checkpoint every " << g_checkpointMs << " ms" << std::endl;
+        Simulator::Schedule(MilliSeconds(g_checkpointMs), &Checkpoint);
+    }
+
     Simulator::Run();
 
     if (g_paperTraffic)
     {
-        DumpRlcDrops();
-        DumpMacPhy();
-        DumpSourceFrames();
+        DumpRlcDrops(true);
+        DumpMacPhy(true);
+        DumpSourceFrames(true);
+        WriteCheckpointMarker(true);
     }
 
 

@@ -351,11 +351,18 @@ class XrFrameSink : public Application
                   << "% bad_hdr=" << m_badHdr << " pkts_rx=" << m_rxPackets << std::endl;
     }
 
+    // Write the per-frame CSV right now (used by the periodic checkpoint).
+    void FlushCsv()
+    {
+        WriteCsv();
+    }
+
     // Frames the matching source had already sent when this sink stopped.
     uint32_t SentAtStop() const
     {
         const auto it = FrameSourceRegistry::Map().find({m_port, m_ueIndex});
-        const uint32_t sent = (it == FrameSourceRegistry::Map().end()) ? 0 : it->second;
+        const uint32_t sentNow = (it == FrameSourceRegistry::Map().end()) ? 0 : it->second;
+        const uint32_t sent = (sentNow > m_sentAtStart) ? (sentNow - m_sentAtStart) : 0;
         return std::max<uint32_t>(sent, static_cast<uint32_t>(m_frames.size()));
     }
 
@@ -365,6 +372,10 @@ class XrFrameSink : public Application
         m_socket = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
         m_socket->Bind(InetSocketAddress(Ipv4Address::GetAny(), m_port));
         m_socket->SetRecvCallback(MakeCallback(&XrFrameSink::HandleRead, this));
+        // Baseline the source counter here: this sink only measures from this moment on
+        // (warm-up is excluded), so the FSR denominator must exclude earlier frames too.
+        const auto it = FrameSourceRegistry::Map().find({m_port, m_ueIndex});
+        m_sentAtStart = (it == FrameSourceRegistry::Map().end()) ? 0 : it->second;
     }
 
     void StopApplication() override
@@ -458,6 +469,7 @@ class XrFrameSink : public Application
     std::string m_csvPath{"frame_stats.csv"};
     std::string m_label{"ue"};
     uint32_t m_ueIndex{0};
+    uint32_t m_sentAtStart{0};
 
     std::map<uint32_t, FrameRecord> m_frames;
     uint32_t m_completed{0};
