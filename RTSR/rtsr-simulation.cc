@@ -101,6 +101,12 @@ static uint32_t g_outerUeCount = 0;
 // ---- P5.1: indoor / outdoor split ----
 static uint32_t g_indoorUeCount = 0;
 static std::set<uint32_t> g_indoorUeNodes; // node ids of the indoor UEs
+// ---- P5.2: UE mobility ----
+static std::vector<Vector> g_ueStartPos; // initial UE positions, for the speed check
+static std::vector<std::pair<double, double>> g_sinrTrace; // (time_ms, sinr_db)
+static uint16_t g_refCellId = UINT16_MAX;
+static uint16_t g_refRnti = UINT16_MAX;
+static uint32_t g_sinrTraceCap = 20000;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -338,6 +344,19 @@ OnRxPacketTraceUe(RxPacketTraceParams params)
     {
         g_sinrSum += 10.0 * std::log10(params.m_sinr);
         ++g_sinrCount;
+    }
+
+    if (g_refCellId == UINT16_MAX)
+    {
+        // Pin the time series to the first measured UE that actually receives data.
+        g_refCellId = static_cast<uint16_t>(params.m_cellId);
+        g_refRnti = params.m_rnti;
+    }
+    if (params.m_cellId == g_refCellId && params.m_rnti == g_refRnti &&
+        g_sinrTrace.size() < g_sinrTraceCap && params.m_sinr > 0.0)
+    {
+        g_sinrTrace.emplace_back(Simulator::Now().GetMilliSeconds(),
+                                 10.0 * std::log10(params.m_sinr));
     }
 
     UePhyStat& ueStat = g_uePhyStats[(params.m_cellId << 16) | params.m_rnti];
@@ -992,6 +1011,7 @@ main(int argc, char* argv[])
     uint32_t uePerCell = 0;
     double indoorRatio = 0.0;
     double indoorPenaltyDb = 20.0;
+    double ueSpeedKmh = 0.0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1068,6 +1088,9 @@ main(int argc, char* argv[])
                  "penetration loss; 0 disables the split.",
                  indoorRatio);
     cmd.AddValue("indoorPenaltyDb", "Penetration loss for indoor UEs in dB", indoorPenaltyDb);
+    cmd.AddValue("ueSpeedKmh",
+                 "UE speed in km/h with a random direction per UE; 0 = stationary (P5.2)",
+                 ueSpeedKmh);
     cmd.AddValue("simTimeMs", "Simulation length in milliseconds (default: appDuration).",
                  simTimeMs);
     cmd.Parse(argc, argv);
@@ -1307,9 +1330,46 @@ main(int argc, char* argv[])
         mobility.SetPositionAllocator(ueDiscPositionAlloc);
     }
 
+    if (ueSpeedKmh > 0.0)
+    {
+        // ConstantVelocity keeps the position set by the allocator and then moves the
+        // node at a fixed velocity - exactly the paper's "3 km/h, random direction".
+        mobility.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
+    }
     for (uint32_t i = 0; i < ueNodes.GetN(); i++)
     {
         mobility.Install(ueNodes.Get(i));
+    }
+
+    g_ueStartPos.clear();
+    for (uint32_t i = 0; i < ueNodes.GetN(); i++)
+    {
+        g_ueStartPos.push_back(
+            ueNodes.Get(i)->GetObject<MobilityModel>()->GetPosition());
+    }
+
+    if (ueSpeedKmh > 0.0)
+    {
+        Ptr<UniformRandomVariable> dirDraw = CreateObject<UniformRandomVariable>();
+        dirDraw->SetAttribute("Min", DoubleValue(0.0));
+        dirDraw->SetAttribute("Max", DoubleValue(2.0 * M_PI));
+        const double v = ueSpeedKmh / 3.6; // km/h -> m/s
+        uint32_t moving = 0;
+        for (uint32_t i = 0; i < ueNodes.GetN(); i++)
+        {
+            Ptr<ConstantVelocityMobilityModel> mm =
+                ueNodes.Get(i)->GetObject<ConstantVelocityMobilityModel>();
+            NS_ABORT_MSG_IF(!mm, "UE " << i << " has no ConstantVelocityMobilityModel");
+            const double dir = dirDraw->GetValue();
+            mm->SetVelocity(Vector(v * std::cos(dir), v * std::sin(dir), 0.0));
+            ++moving;
+        }
+        std::cout << "[P5.2] " << moving << " moving UE(s) at " << ueSpeedKmh
+                  << " km/h (" << v << " m/s), random direction" << std::endl;
+    }
+    else
+    {
+        std::cout << "[P5.2] stationary UEs (ueSpeedKmh = 0)" << std::endl;
     }
 
     /*
@@ -1848,6 +1908,75 @@ main(int argc, char* argv[])
     std::cout << "\n\n  Mean flow throughput: " << averageFlowThroughput / stats.size()
               << "Mbps \n";
     std::cout << "  Mean flow delay: " << averageFlowDelay / stats.size() << " ms\n";
+
+    // P5.2 verification: 1) the speed actually achieved (displacement / elapsed time),
+    // 2) the SINR time series of one reference UE.
+    if (!g_ueStartPos.empty())
+    {
+        // The mobility models start moving at t=0 (mobility.Install happens during the
+        // setup, not at the application start), so the elapsed time is the simulator
+        // time itself - using (now - appStart) reported 3.21 km/h for a 3 km/h run.
+        const double elapsed = Simulator::Now().GetSeconds();
+        double sumSpeed = 0.0;
+        uint32_t counted = 0;
+        double moved = 0.0;
+        for (uint32_t i = 0; i < ueNodes.GetN() && i < g_ueStartPos.size(); ++i)
+        {
+            const Vector p = ueNodes.Get(i)->GetObject<MobilityModel>()->GetPosition();
+            const double d = CalculateDistance(Vector(p.x, p.y, 0.0),
+                                               Vector(g_ueStartPos[i].x, g_ueStartPos[i].y, 0.0));
+            if (elapsed > 0.0)
+            {
+                sumSpeed += d / elapsed;
+                moved += d;
+                ++counted;
+            }
+        }
+        if (counted)
+        {
+            std::cout << "[P5.2] mean speed from displacement = " << (3.6 * sumSpeed / counted)
+                      << " km/h over " << elapsed << " s (mean displacement "
+                      << (moved / counted) << " m)" << std::endl;
+        }
+    }
+    if (!g_sinrTrace.empty())
+    {
+        std::ofstream tr("sinr_trace.csv");
+        tr << "time_ms,sinr_db\n";
+        for (const auto& s : g_sinrTrace)
+        {
+            tr << s.first << "," << s.second << "\n";
+        }
+        double mn = g_sinrTrace.front().second;
+        double mx = mn;
+        for (const auto& s : g_sinrTrace)
+        {
+            mn = std::min(mn, s.second);
+            mx = std::max(mx, s.second);
+        }
+        // 1 s bucket means: the per-TB spread is dominated by the RB allocation, while
+        // the bucket means show the slow channel drift that mobility causes.
+        std::map<int, std::pair<double, int>> buckets;
+        for (const auto& s : g_sinrTrace)
+        {
+            auto& b = buckets[static_cast<int>(s.first / 1000.0)];
+            b.first += s.second;
+            b.second += 1;
+        }
+        double bMin = 1e9;
+        double bMax = -1e9;
+        std::cout << "[P5.2] ref UE cell=" << g_refCellId << " rnti=" << g_refRnti
+                  << " sinr samples=" << g_sinrTrace.size() << " per-TB range=" << (mx - mn)
+                  << " dB; 1 s bucket means:";
+        for (const auto& b : buckets)
+        {
+            const double mean = b.second.first / b.second.second;
+            bMin = std::min(bMin, mean);
+            bMax = std::max(bMax, mean);
+            std::cout << " " << b.first << "s=" << mean;
+        }
+        std::cout << " (bucket spread " << (bMax - bMin) << " dB)" << std::endl;
+    }
 
     Simulator::Destroy();
     return 0;
