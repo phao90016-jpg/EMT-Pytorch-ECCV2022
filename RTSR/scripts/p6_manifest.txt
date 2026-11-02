@@ -1,22 +1,19 @@
-# P6 / T4 run manifest.  Format:  <run id>|<extra ns-3 args>
-# The common configuration (21 cells, 100 MHz, 80% indoor, 3 km/h, DDDSU, checkpoints
-# every 5 s) lives in p6_run.sh, only the per-run differences are listed here.
-# Lines starting with # are ignored; a run whose result dir has a DONE marker is skipped.
+# P6 / T4 run manifest (option A: {6,12,18} UE/cell x 2 schemes x 6 s).
+# Common configuration lives in p6_run.sh; only the per-run differences are here.
+# A run whose result dir contains DONE is skipped, so re-running is always safe.
 
-# ---- S0 probe (must pass before the main grid is worth running) ----
-# Conventional SR at 18 UE/cell: the paper says satisfaction collapses just above 18.
-p6-probe-conv-18|--scheme=conventional --uePerCell=18 --appDuration=6000
+# ---- stage 0: cheap pipeline validation + plateau anchor (1.8 h) ----
+p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=6000
+p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
 
-# ---- S1 main grid: three points x two schemes, 10 s ----
-p6-18-rtsr|--scheme=rtsr --uePerCell=18 --appDuration=10000
-p6-18-conv|--scheme=conventional --uePerCell=18 --appDuration=10000
-p6-23-rtsr|--scheme=rtsr --uePerCell=23 --appDuration=10000
-p6-23-conv|--scheme=conventional --uePerCell=23 --appDuration=10000
-p6-26-rtsr|--scheme=rtsr --uePerCell=26 --appDuration=10000
-p6-26-conv|--scheme=conventional --uePerCell=26 --appDuration=10000
+# ---- stage 1: the knee point (16.2 h) ----
+p6-18-conv|--scheme=conventional --uePerCell=18 --appDuration=6000
+p6-18-rtsr|--scheme=rtsr --uePerCell=18 --appDuration=6000
 
-# ---- S2 optional low-load points (run only if S1's shape needs the left half) ----
-#p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=10000
-#p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=10000
-#p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=10000
-#p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=10000
+# ---- stage 2: curve middle (6.4 h) ----
+p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=6000
+p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
+
+# ---- deferred: 26 UE/cell costs 23.4 h for two runs, only if 18 does not collapse ----
+#p6-26-conv|--scheme=conventional --uePerCell=26 --appDuration=6000
+#p6-26-rtsr|--scheme=rtsr --uePerCell=26 --appDuration=6000
