@@ -126,6 +126,9 @@ static std::chrono::steady_clock::time_point g_wallStart;
 // P6: pure diagnostics that cost time but never feed a result.
 static bool g_enablePing = true;
 static bool g_flowmonProbes = false;
+// P6: 3GPP channel coherence / update period.  0 keeps ns-3's default (regenerate on
+// every call, i.e. every slot); a non-zero value reuses the channel matrix for that long.
+static double g_channelUpdatePeriodMs = 0.0;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -1213,6 +1216,7 @@ main(int argc, char* argv[])
     uint32_t progressMs = 0;
     bool enablePing = true;
     bool flowmonProbes = false;
+    double channelUpdatePeriodMs = 0.0;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1303,6 +1307,10 @@ main(int argc, char* argv[])
     cmd.AddValue("flowmonProbes",
                  "Write the per-packet FlowMonitor probe section into the XML (large)",
                  flowmonProbes);
+    cmd.AddValue("channelUpdatePeriodMs",
+                 "Reuse the 3GPP channel matrix for this many ms (0 = ns-3 default, "
+                 "regenerate every slot); 3 km/h coherence time is ~45 ms (P6)",
+                 channelUpdatePeriodMs);
     cmd.AddValue("checkpointEveryMs",
                  "If > 0, flush every statistic to disk this often (ms) so a killed run "
                  "still leaves data; ns-3 cannot resume a run (P6)",
@@ -1326,6 +1334,16 @@ main(int argc, char* argv[])
     g_progressMs = progressMs;
     g_enablePing = enablePing;
     g_flowmonProbes = flowmonProbes;
+    g_channelUpdatePeriodMs = channelUpdatePeriodMs;
+    if (g_channelUpdatePeriodMs > 0.0)
+    {
+        // Must happen before the operation band (and therefore the channel model) is
+        // created further down.
+        Config::SetDefault("ns3::ThreeGppChannelModel::UpdatePeriod",
+                           TimeValue(MilliSeconds(g_channelUpdatePeriodMs)));
+        std::cout << "[P6] 3GPP channel update period = " << g_channelUpdatePeriodMs
+                  << " ms (0 = every slot)" << std::endl;
+    }
     if (g_siteRings >= 0)
     {
         numSites = 1 + 3 * static_cast<uint32_t>(g_siteRings) *

@@ -8,7 +8,7 @@
 #
 # Usage:  bash RTSR/scripts/p6_run.sh [manifest]
 set -uo pipefail
-BIN=/home/penghao/code/ns-allinone-3.39/ns-3.39/build/src/nr/examples/ns3.39-cttc-nr-traffic-3gpp-xr-default
+BIN=/home/penghao/code/ns-allinone-3.39/ns-3.39/build/src/nr/examples/ns3.39-cttc-nr-traffic-3gpp-xr-optimized
 REPO=/home/penghao/code/EMT-Pytorch-ECCV2022
 MANIFEST=${1:-$REPO/RTSR/scripts/p6_manifest.txt}
 ROOT=$REPO/RTSR/results/p6
