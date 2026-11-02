@@ -23,6 +23,7 @@
 #include "rtsr-frame-agents.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -116,6 +117,15 @@ static uint32_t g_checkpointsWritten = 0;
 // P6: warm-up - the frame sinks (and therefore the FSR denominators) start this much
 // after the traffic sources, so the cell-search / RRC phase is not counted.
 static uint32_t g_warmupMs = 0;
+// P6: progress heartbeat.  A long run used to be a black box - no output between the
+// start and the end, so a run that took 3 hours could not be told apart from a stuck
+// one.  This writes one small file periodically (NOT the CSVs: flushing 546 per-UE
+// files every second would itself cost minutes).
+static uint32_t g_progressMs = 0;
+static std::chrono::steady_clock::time_point g_wallStart;
+// P6: pure diagnostics that cost time but never feed a result.
+static bool g_enablePing = true;
+static bool g_flowmonProbes = false;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -645,6 +655,28 @@ static void DumpMacPhy(bool announce);
 static void DumpRlcDrops(bool announce);
 static void DumpSourceFrames(bool announce);
 
+// Heartbeat: simulated time, wall time, achieved rate and ETA.  ~1 file write of a few
+// hundred bytes, so it can run on a short period (e.g. every 1 s of simulated time).
+static void
+ProgressTick()
+{
+    const double simMs = Simulator::Now().GetMilliSeconds();
+    const double wallS =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - g_wallStart).count();
+    const double rate = (simMs > 0.0) ? (wallS * 1000.0 / simMs) : 0.0;
+    const double etaS = (simMs > 0.0) ? (wallS * (g_appDurationMs - simMs) / simMs) : 0.0;
+    std::ofstream st("progress.txt");
+    st << "simulated_ms," << simMs << "\n";
+    st << "planned_ms," << g_appDurationMs << "\n";
+    st << "wall_s," << wallS << "\n";
+    st << "wall_per_sim_s," << rate << "\n";
+    st << "eta_s," << etaS << "\n";
+    if (g_progressMs > 0 && Simulator::Now() < MilliSeconds(g_appDurationMs))
+    {
+        Simulator::Schedule(MilliSeconds(g_progressMs), &ProgressTick);
+    }
+}
+
 static void
 WriteCheckpointMarker(bool complete)
 {
@@ -839,8 +871,11 @@ ConfigureXrApp(NodeContainer& ueContainer,
 
         nrHelper->ActivateDedicatedEpsBearer(ueNetDev.Get(i), bearer, tft);
 
-        PingHelper pingPaper(ipAddress);
-        pingApps.Add(pingPaper.Install(remoteHostContainer));
+        if (g_enablePing)
+        {
+            PingHelper pingPaper(ipAddress);
+            pingApps.Add(pingPaper.Install(remoteHostContainer));
+        }
         return;
     }
 
@@ -1175,6 +1210,9 @@ main(int argc, char* argv[])
     double ueSpeedKmh = 0.0;
     uint32_t checkpointMs = 0;
     uint32_t warmupMs = 0;
+    uint32_t progressMs = 0;
+    bool enablePing = true;
+    bool flowmonProbes = false;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1255,6 +1293,16 @@ main(int argc, char* argv[])
                  "Exclude the first N ms from the frame statistics (warm-up: attach and "
                  "RRC setup); the traffic itself starts earlier (P6)",
                  warmupMs);
+    cmd.AddValue("progressEveryMs",
+                 "If > 0, write progress.txt (simulated time, wall time, ETA) this often; "
+                 "cheap, unlike the full CSV checkpoint (P6)",
+                 progressMs);
+    cmd.AddValue("enablePing",
+                 "Install the ping probe applications (diagnostic only; costs a little)",
+                 enablePing);
+    cmd.AddValue("flowmonProbes",
+                 "Write the per-packet FlowMonitor probe section into the XML (large)",
+                 flowmonProbes);
     cmd.AddValue("checkpointEveryMs",
                  "If > 0, flush every statistic to disk this often (ms) so a killed run "
                  "still leaves data; ns-3 cannot resume a run (P6)",
@@ -1275,6 +1323,9 @@ main(int argc, char* argv[])
     g_uePerCell = uePerCell;
     g_checkpointMs = checkpointMs;
     g_warmupMs = warmupMs;
+    g_progressMs = progressMs;
+    g_enablePing = enablePing;
+    g_flowmonProbes = flowmonProbes;
     if (g_siteRings >= 0)
     {
         numSites = 1 + 3 * static_cast<uint32_t>(g_siteRings) *
@@ -1989,6 +2040,12 @@ main(int argc, char* argv[])
         std::cout << "[P6] checkpoint every " << g_checkpointMs << " ms" << std::endl;
         Simulator::Schedule(MilliSeconds(g_checkpointMs), &Checkpoint);
     }
+    if (g_progressMs > 0)
+    {
+        g_wallStart = std::chrono::steady_clock::now();
+        Simulator::Schedule(MilliSeconds(g_progressMs), &ProgressTick);
+        std::cout << "[P6] progress heartbeat every " << g_progressMs << " ms" << std::endl;
+    }
 
     Simulator::Run();
 
@@ -2006,7 +2063,9 @@ main(int argc, char* argv[])
 
     // Dump the raw FlowMonitor trace: per-flow counters plus the probe records
     // (one entry per packet), so the numbers printed below can be audited.
-    flowmonHelper.SerializeToXmlFile("rtsr-flowmon.xml", true, true);
+    // The per-packet probe section is huge and nothing reads it; the per-flow counters
+    // that layer_stats.py uses are always written.
+    flowmonHelper.SerializeToXmlFile("rtsr-flowmon.xml", true, g_flowmonProbes);
     std::cout << "\n[TRACE] FlowMonitor XML written to rtsr-flowmon.xml\n";
     Ptr<Ipv4FlowClassifier> classifier =
         DynamicCast<Ipv4FlowClassifier>(flowmonHelper.GetClassifier());

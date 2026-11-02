@@ -1,0 +1,6 @@
+metric,value
+frames_sent,2019
+frames_seen_by_sink,2005
+frames_complete,2004
+frames_within_pdb,1939
+frames_never_seen,14

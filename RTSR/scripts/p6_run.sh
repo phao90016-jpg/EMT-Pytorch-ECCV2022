@@ -18,7 +18,8 @@ WORK=/tmp/p6work
 # 100 MHz/Table III preset, 80% indoor, 3 km/h, DDDSU, checkpoint every 5 s, RngRun 1.
 COMMON="--trafficModel=paper --preset=paperTable3 --sectorized=1 --numSectors=3 \
 --siteRings=1 --statsRings=1 --indoorRatio=0.8 --ueSpeedKmh=3 --tddPattern=DDDSU \
---checkpointEveryMs=5000 --warmupMs=1000 --rngRun=1"
+--checkpointEveryMs=5000 --warmupMs=1000 --progressEveryMs=2000 \
+--enablePing=0 --flowmonProbes=0 --rngRun=1"
 
 mkdir -p "$ROOT" "$WORK"
 [ -f "$ROOT/summary.csv" ] || echo "run,ues,frames,satisfied,satisfied_pct,mean_fsr" > "$ROOT/summary.csv"
