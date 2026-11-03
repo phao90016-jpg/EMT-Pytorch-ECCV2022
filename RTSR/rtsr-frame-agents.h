@@ -85,6 +85,8 @@ struct FrameSourceRegistry
 struct FrameSinkTotals
 {
     std::string label;
+    uint32_t ue{0};
+    uint16_t port{0};
     uint32_t seen{0};
     uint32_t complete{0};
     uint32_t withinPdb{0};
@@ -239,7 +241,9 @@ class XrFrameSource : public Application
         {
             uint32_t chunk = std::min(remaining, m_mtu);
             FrameHeader hdr;
-            hdr.frameId = m_framesSent;
+            // Globally unique: high 12 bits carry the UE index so an RLC drop can be
+            // attributed to a UE (the per-UE counter alone collides across UEs).
+            hdr.frameId = (m_ueIndex << 20) | (m_framesSent & 0xFFFFFu);
             hdr.seq = static_cast<uint16_t>(seq);
             hdr.total = static_cast<uint16_t>(total);
             hdr.frameBytes = frameBytes;
@@ -388,6 +392,8 @@ class XrFrameSink : public Application
         PrintSummary();
         FrameSinkTotals totals;
         totals.label = m_label;
+        totals.ue = m_ueIndex;
+        totals.port = m_port;
         totals.seen = static_cast<uint32_t>(m_frames.size());
         totals.complete = m_completed;
         totals.withinPdb = m_onTime;

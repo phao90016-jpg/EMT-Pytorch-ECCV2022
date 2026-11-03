@@ -657,6 +657,7 @@ TryConnectMacPhy()
 static void DumpMacPhy(bool announce);
 static void DumpRlcDrops(bool announce);
 static void DumpSourceFrames(bool announce);
+static void DumpPerUeSummary();
 
 // Heartbeat: simulated time, wall time, achieved rate and ETA.  ~1 file write of a few
 // hundred bytes, so it can run on a short period (e.g. every 1 s of simulated time).
@@ -677,6 +678,22 @@ ProgressTick()
     if (g_progressMs > 0 && Simulator::Now() < MilliSeconds(g_appDurationMs))
     {
         Simulator::Schedule(MilliSeconds(g_progressMs), &ProgressTick);
+    }
+}
+
+// One row per measured UE: how many frames it sent (from the source registry), how
+// many the sink saw, how many were fully delivered, and how many met the end-to-end
+// delay.  Together with rlc_drops.csv (frame id = ueIndex<<20 | counter) this is what
+// the paper's "satisfied" definition needs.
+static void
+DumpPerUeSummary()
+{
+    std::ofstream out("frame_per_ue.csv");
+    out << "ue,port,sent,seen,complete,in_pdb_e2e\n";
+    for (const auto& t : g_frameSinkTotals)
+    {
+        out << t.ue << "," << t.port << "," << t.sentAtStop << "," << t.seen << "," << t.complete
+            << "," << t.withinPdb << "\n";
     }
 }
 
@@ -726,6 +743,7 @@ DumpSourceFrames(bool announce)
         complete += t.complete;
         inPdb += t.withinPdb;
     }
+    DumpPerUeSummary();
     std::ofstream out("source_frames.csv");
     out << "metric,value\n";
     out << "frames_sent," << sent << "\n";

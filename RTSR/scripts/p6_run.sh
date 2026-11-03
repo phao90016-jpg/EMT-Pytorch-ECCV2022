@@ -18,11 +18,11 @@ WORK=/tmp/p6work
 # 100 MHz/Table III preset, 80% indoor, 3 km/h, DDDSU, checkpoint every 5 s, RngRun 1.
 COMMON="--trafficModel=paper --preset=paperTable3 --sectorized=1 --numSectors=3 \
 --siteRings=1 --statsRings=1 --indoorRatio=0.8 --ueSpeedKmh=3 --tddPattern=DDDSU \
---checkpointEveryMs=5000 --warmupMs=1000 --progressEveryMs=2000 \
+--checkpointEveryMs=5000 --warmupMs=1000 --progressEveryMs=250 \
 --enablePing=0 --flowmonProbes=0 --rngRun=1"
 
 mkdir -p "$ROOT" "$WORK"
-[ -f "$ROOT/summary.csv" ] || echo "run,ues,frames,satisfied,satisfied_pct,mean_fsr" > "$ROOT/summary.csv"
+[ -f "$ROOT/summary2.csv" ] || echo "run,ues,frames,satisfied,satisfied_pct,mean_fsr_paper,mean_fsr_e2e,dropped_frames" > "$ROOT/summary2.csv"
 
 while IFS='|' read -r id args; do
   [[ -z "${id:-}" ]] && continue
@@ -48,7 +48,7 @@ while IFS='|' read -r id args; do
     touch "$dst/DONE"
     ( cd "$REPO" && python3 RTSR/layer_stats.py --dir "$dst" --out "$dst/layer_report.md" \
         > /dev/null 2>&1 )
-    python3 "$REPO/RTSR/scripts/p6_stats.py" "$dst" >> "$ROOT/summary.csv" 2>/dev/null
+    python3 "$REPO/RTSR/scripts/p6_stats.py" "$dst" >> "$ROOT/summary2.csv" 2>/dev/null
     echo "[ok  ] $id archived + summarised"
   else
     echo "[WARN] $id did not finish; partial data kept (see checkpoint.txt), no DONE marker"
