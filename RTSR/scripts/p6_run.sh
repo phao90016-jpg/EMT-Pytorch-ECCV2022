@@ -38,9 +38,20 @@ while IFS='|' read -r id args; do
   cd "$wd" || exit 1
   echo "[run ] $id  $COMMON $args"
   start=$(date +%s)
+  # Watchdog: wall clock + simulated time + process CPU every 5 min.  Without it a stall
+  # (host suspended / throttled) looks exactly like a very slow simulation.
+  (
+    while sleep 300; do
+      simms=$(sed -n 's/^simulated_ms,//p' progress.txt 2>/dev/null)
+      cpu=$(ps -o etime=,time= -C ns3.39-cttc-nr-traffic-3gpp-xr-optimized 2>/dev/null | head -1)
+      echo "$(date '+%F %T') sim_ms=${simms:-?} proc=${cpu:-gone}" >> "$dst/watchdog.log"
+    done
+  ) &
+  watchdog_pid=$!
   # shellcheck disable=SC2086
   "$BIN" $COMMON $args > "$dst/run.log" 2>&1
   rc=$?
+  kill "$watchdog_pid" 2>/dev/null
   wall=$(( $(date +%s) - start ))
   echo "[exit] $id rc=$rc wall=${wall}s"
   cp -f ./*.csv ./*.xml ./checkpoint.txt "$dst"/ 2>/dev/null

@@ -1,0 +1,19 @@
+# P6 batch 2: the knee region.  One run per line:  <run id>|<extra ns-3 args>
+# Common configuration lives in p6_run_parallel.sh (21 cells, 100 MHz, 80% indoor,
+# 3 km/h, DDDSU, warm-up 1 s, checkpoint 5 s, heartbeat, no ping/probes, RngRun 1).
+# A run whose result dir contains DONE is skipped, so re-running is always safe.
+#
+# Already done (do not re-add): p6-6-conv 96.83%, p6-6-rtsr 100%, p6-18-conv 0%.
+
+# ---- batch 2 (3 parallel, ~14-16 h) ----
+p6-18-rtsr|--scheme=rtsr --uePerCell=18 --appDuration=6000
+p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=6000
+p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
+
+# ---- batch 3 (optional, after batch 2) ----
+#p6-9-conv|--scheme=conventional --uePerCell=9 --appDuration=6000
+#p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000
+
+# ---- not needed: 26 UE/cell (18 already collapses) ----
+#p6-26-conv|--scheme=conventional --uePerCell=26 --appDuration=6000
+#p6-26-rtsr|--scheme=rtsr --uePerCell=26 --appDuration=6000

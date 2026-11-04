@@ -129,6 +129,10 @@ static bool g_flowmonProbes = false;
 // P6: 3GPP channel coherence / update period.  0 keeps ns-3's default (regenerate on
 // every call, i.e. every slot); a non-zero value reuses the channel matrix for that long.
 static double g_channelUpdatePeriodMs = 0.0;
+// P6: MAC scheduler.  tdma-qos is the original (time division, one UE per slot), which
+// caps the per-UE rate at TB_size / service_interval and made 18 UE/cell collapse while
+// the spectrum was only a third used.  ofdma-qos splits each slot's RBs among UEs.
+static std::string g_scheduler = "tdma-qos";
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -1235,6 +1239,7 @@ main(int argc, char* argv[])
     bool enablePing = true;
     bool flowmonProbes = false;
     double channelUpdatePeriodMs = 0.0;
+    std::string scheduler = "tdma-qos";
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1325,6 +1330,9 @@ main(int argc, char* argv[])
     cmd.AddValue("flowmonProbes",
                  "Write the per-packet FlowMonitor probe section into the XML (large)",
                  flowmonProbes);
+    cmd.AddValue("scheduler",
+                 "MAC scheduler: tdma-qos (default), ofdma-qos, ofdma-pf, ofdma-rr (P6)",
+                 scheduler);
     cmd.AddValue("channelUpdatePeriodMs",
                  "Reuse the 3GPP channel matrix for this many ms (0 = ns-3 default, "
                  "regenerate every slot); 3 km/h coherence time is ~45 ms (P6)",
@@ -1353,6 +1361,7 @@ main(int argc, char* argv[])
     g_enablePing = enablePing;
     g_flowmonProbes = flowmonProbes;
     g_channelUpdatePeriodMs = channelUpdatePeriodMs;
+    g_scheduler = scheduler;
     if (g_channelUpdatePeriodMs > 0.0)
     {
         // Must happen before the operation band (and therefore the channel model) is
@@ -1473,9 +1482,29 @@ main(int argc, char* argv[])
     Config::SetDefault("ns3::LteEnbRrc::EpsBearerToRlcMapping",
                        EnumValue(useUdp ? LteEnbRrc::RLC_UM_ALWAYS : LteEnbRrc::RLC_AM_ALWAYS));
 
-    // Use QoS-aware scheduling so the XR bearer (QCI 80) is served ahead of
-    // the SR bearer (QCI 9) when radio resources are congested.
-    nrHelper->SetSchedulerTypeId(TypeId::LookupByName("ns3::NrMacSchedulerTdmaQos"));
+    // QoS-aware scheduling so the XR bearer (QCI 80) is served ahead of the SR bearer
+    // (QCI 9).  TDMA serves one UE per slot; with many UEs that makes the per-UE rate
+    // TB/service-interval bound instead of spectrum bound (P6 diagnosis), so OFDMA is
+    // selectable.
+    std::string schedTypeId = "ns3::NrMacSchedulerTdmaQos";
+    if (g_scheduler == "ofdma-qos")
+    {
+        schedTypeId = "ns3::NrMacSchedulerOfdmaQos";
+    }
+    else if (g_scheduler == "ofdma-pf")
+    {
+        schedTypeId = "ns3::NrMacSchedulerOfdmaPF";
+    }
+    else if (g_scheduler == "ofdma-rr")
+    {
+        schedTypeId = "ns3::NrMacSchedulerOfdmaRR";
+    }
+    else if (g_scheduler != "tdma-qos")
+    {
+        NS_ABORT_MSG("unknown --scheduler value: " << g_scheduler);
+    }
+    nrHelper->SetSchedulerTypeId(TypeId::LookupByName(schedTypeId));
+    std::cout << "[SCHED] " << schedTypeId << std::endl;
     if (g_pdcchSymbols > 0)
     {
         nrHelper->SetSchedulerAttribute("DlCtrlSymbols",
