@@ -1,0 +1,9 @@
+# P6 batch 3: the 9 UE/cell pair (189 UEs each), run alongside the still-running 18-rtsr.
+# One run per line:  <run id>|<extra ns-3 args>
+# Common configuration lives in p6_run_parallel.sh.
+# Note: 9 UE/cell = 180 Mbps/cell offered for conventional (capacity ~190), so this point
+# should still be near the top of the curve - it brackets where conventional starts to fall
+# between 6 (96.8%) and 12 (2.8%).
+
+p6-9-conv|--scheme=conventional --uePerCell=9 --appDuration=6000
+p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000

@@ -1,0 +1,9 @@
+metric,value
+scheduled_tbs,632327
+scheduled_bytes,2396835469
+retransmissions,50520
+measured_cells,21
+all_dlscheduling_events,971695
+dropped_tbsize_zero,0
+dropped_stream_gt0,0
+duplicate_dci_events,339368

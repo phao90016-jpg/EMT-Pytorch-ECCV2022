@@ -39,7 +39,7 @@ for wd in "$WORK"/p6-*; do
       && printf "%-14s %-18s %-12s %-10s %s\n" "$id" "(starting)" "-" "-" "-"
     continue
   fi
-  if [ -z "$(find "$pf" -newermt '-60 minutes' 2>/dev/null)" ]; then
+  if [ -z "$(find "$pf" -newermt '-3 hours' 2>/dev/null)" ]; then
     continue   # heartbeat older than an hour and not finished: an abandoned leftover
   fi
   sim=$(sed -n 's/^simulated_ms,//p' "$pf")

@@ -2,18 +2,18 @@
 # Common configuration lives in p6_run.sh; only the per-run differences are here.
 # A run whose result dir contains DONE is skipped, so re-running is always safe.
 
-# ---- stage 0: cheap pipeline validation + plateau anchor (1.8 h) ----
-p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=6000
-p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
+# ---- stage 0: DONE (6 UE/cell, 2026-11-03) ----
+#p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=6000
+#p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
 
-# ---- stage 1: the knee point (16.2 h) ----
+# ---- stage 1: the knee point (RUNNING, ~16 h) ----
 p6-18-conv|--scheme=conventional --uePerCell=18 --appDuration=6000
 p6-18-rtsr|--scheme=rtsr --uePerCell=18 --appDuration=6000
 
 # ---- stage 2: curve middle (6.4 h) ----
-p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=6000
-p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
+#p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=6000
+#p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
 
-# ---- deferred: 26 UE/cell costs 23.4 h for two runs, only if 18 does not collapse ----
+# ---- deferred: 26 UE/cell costs 23.4 h for two runs ----
 #p6-26-conv|--scheme=conventional --uePerCell=26 --appDuration=6000
 #p6-26-rtsr|--scheme=rtsr --uePerCell=26 --appDuration=6000

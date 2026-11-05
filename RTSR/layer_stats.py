@@ -138,12 +138,17 @@ def main():
     # Frames the sink never saw at all are lost too - they used to be invisible here
     # (the sink only opens a record on the first arriving packet), which made this
     # line read 100% while the L1 FSR was lower.
-    failed_total = len(failed_ids) + fully_dropped
+    # Frames dropped at the BS usually never reach the sink, so they are already part of
+    # fully_dropped; adding the two counts double-counted them and could push the failure
+    # count above frames_sent (FSR went negative on the 18 UE/cell run).
+    seen_ids = set(int(r["frame_id"]) for r in frames)
+    overlap = len(dropped_frames - seen_ids)
+    failed_total = min(frames_sent, len(failed_ids) + fully_dropped - overlap)
     fsr_paper = pct(frames_sent - failed_total, frames_sent)
     L.append(f"| L1 应用 | 帧丢失率 | **{frame_loss:.2f}%** | 不完整帧占比 |")
     L.append(f"| **P3 帧级** | **FSR（BS 等待口径）** | **{fsr_paper:.2f}%** | "
              f"超时帧 {len(dropped_frames)} + 不完整帧 {len(incomplete_ids)} + "
-             f"整帧全丢 {fully_dropped} = {failed_total} / {frames_sent} |")
+             f"整帧全丢 {fully_dropped} − 重叠 {overlap} = {failed_total} / {frames_sent} |")
     L.append(f"| P3 对照 | FSR（端到端口径） | {fsr:.2f}% | 含空口传输时间，偏严 |")
     L.append(f"| L2 IP | 视频包 tx / rx | {ip_tx} / {ip_rx} | 丢 {ip_lost}（**{l2_loss:.3f}%**） |")
     if model_ip:

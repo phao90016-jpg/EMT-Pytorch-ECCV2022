@@ -33,3 +33,10 @@ Thumbs.db
 
 # 依赖锁文件（保留，视情况注释）
 # requirements-lock.txt
+
+# RTSR 仿真原始产物（体积大、可由 docs/04 重跑生成，不入库）
+RTSR/results/p6/*/frame_stats_port*_ue*.csv
+RTSR/results/p6/*/rlc_drops.csv
+RTSR/results/p6/*/*flowmon*.xml
+RTSR/results/p6/*/ctrl_sinr_buckets.csv
+RTSR/results/p6/*/wb_data_sinr_buckets.csv

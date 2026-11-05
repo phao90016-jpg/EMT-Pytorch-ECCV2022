@@ -1,3 +1,5 @@
 run,ues,frames,satisfied,satisfied_pct,mean_fsr
 p6-g0-seed1,21,2005,19,90.48,96.527
 p6-g0-seed2,21,2012,20,95.24,99.950
+p6-6-conv,126,34778,45,35.71,93.725
+p6-6-rtsr,126,34768,124,98.41,99.936
