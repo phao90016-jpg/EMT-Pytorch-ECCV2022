@@ -818,19 +818,33 @@ WriteBytesReceived(Ptr<PacketSink> packetSink, uint64_t* previousBytesReceived)
     *previousBytesReceived = totalBytesReceived;
 };
 
-// Send one SR model as a burst of UDP packets.
+// Send one SR model update (530 KiB) spread over its update period.
+//
+// The paper quotes "530 KB every 6 s", i.e. 0.71 Mbps per UE on average.  The previous
+// implementation sent all 530 packets back-to-back (1 us apart) and stopped after 1 ms:
+// that needs ~4 Gbps with 378 UEs (far beyond a ~190 Mbps cell) and overflows the 500 KiB
+// RLC buffer, so 98.7-99.9% of the model updates were dropped and RTSR never paid for its
+// model overhead.  Pacing the packets across the period reproduces the paper's average
+// overhead without an impossible instantaneous spike.
 void
-SendSrModel(Ptr<Node> sourceNode, Ipv4Address destIp, uint16_t port, Time startTime)
+SendSrModel(Ptr<Node> sourceNode,
+            Ipv4Address destIp,
+            uint16_t port,
+            Time startTime,
+            Time period)
 {
-    // UdpClient limits a datagram to 65507 bytes; 530 x 1024 bytes is 530 KiB.
+    const uint32_t packets = 530;   // 530 x 1024 B = 530 KiB
+    const uint32_t packetSize = 1024;
+    const Time interval = period / packets;
+
     UdpClientHelper client(destIp, port);
-    client.SetAttribute("MaxPackets", UintegerValue(530));
-    client.SetAttribute("Interval", TimeValue(MicroSeconds(1)));
-    client.SetAttribute("PacketSize", UintegerValue(1024));
+    client.SetAttribute("MaxPackets", UintegerValue(packets));
+    client.SetAttribute("Interval", TimeValue(interval));
+    client.SetAttribute("PacketSize", UintegerValue(packetSize));
 
     ApplicationContainer app = client.Install(sourceNode);
     app.Start(startTime);
-    app.Stop(startTime + MilliSeconds(1));
+    app.Stop(startTime + period + MilliSeconds(50));
 }
 
 void
@@ -1478,7 +1492,9 @@ main(int argc, char* argv[])
     nrHelper->SetUePhyAttribute("TxPower", DoubleValue(23));
     nrHelper->SetUePhyAttribute("NoiseFigure", DoubleValue(nfUe));
 
-    Config::SetDefault("ns3::LteRlcUm::MaxTxBufferSize", UintegerValue(500 * 1024));
+    // 2 MiB: the video frames are 20-60 KB and the model update is now paced, so this is
+    // only a safety net (the 10 ms PDB discard, not the buffer, governs the video queue).
+    Config::SetDefault("ns3::LteRlcUm::MaxTxBufferSize", UintegerValue(2 * 1024 * 1024));
     Config::SetDefault("ns3::LteEnbRrc::EpsBearerToRlcMapping",
                        EnumValue(useUdp ? LteEnbRrc::RLC_UM_ALWAYS : LteEnbRrc::RLC_AM_ALWAYS));
 
@@ -2086,7 +2102,8 @@ main(int argc, char* argv[])
             SendSrModel(remoteHost,
                         ueIp,
                         5000,
-                        MilliSeconds(appStartTimeMs + 1 + t * 6000));
+                        MilliSeconds(appStartTimeMs + 1 + t * 6000),
+                        MilliSeconds(6000));
         }
     }
     // ======================================================
