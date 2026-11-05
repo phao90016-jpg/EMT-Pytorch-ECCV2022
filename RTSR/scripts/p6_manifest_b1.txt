@@ -1,0 +1,5 @@
+# B1 re-run: RTSR points re-measured with the paced model update (530 KiB over 6 s).
+# Pre-B1 numbers are preserved in results/p6/_b1_before/.
+p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
+p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000
+p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
