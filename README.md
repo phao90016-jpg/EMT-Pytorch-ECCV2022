@@ -6,6 +6,16 @@
 - 官方实现：[Neural-video-delivery/EMT-Pytorch-ECCV2022](https://github.com/Neural-video-delivery/EMT-Pytorch-ECCV2022)
 - 本仓库 Fork 自官方仓库，用于记录个人复现过程。
 
+## 仓库结构（两个复现）
+
+| 目录 | 内容 | 入口 |
+|---|---|---|
+| `src/`、`generate_lr.py`、`experiment/` | **论文一 EMT**（ECCV 2022）：高效元调优 + 内容感知视频传输 | 本文档 |
+| `RTSR/` | **论文二 RTSR**（WCNC 2023）：XR 实时超分传输，算法层 + ns-3 5G 网络层 | [`RTSR/README.md`](RTSR/README.md) |
+
+> RTSR 的文档已重构为 `RTSR/docs/01`–`06`（参数 / 实现与偏差 / 结果 / 执行手册 / 答辩 / 路线）。
+> 核心结论：12 UE/cell 时传统方案满意率 **2.78%**、RTSR **97.22%**（论文：两者都 >90%）。
+
 ## 复现环境
 
 | 项目 | 配置 |
@@ -431,7 +441,8 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 1. **AdaFM / Sidetuning 对比**：查阅论文正文 Table 2/3，摘录对应 PSNR 数值，填入对比表
 2. **SSIM / LPIPS 指标**：补充结构相似性和感知指标
 3. **vlog 扩展**：补充更多视频类别的验证
-4. **ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台
+4. ~~**ns-3 仿真环境**：为后续 RTSR (WCNC 2023) 复现搭建 5G-Advanced 网络仿真平台~~
+   → **已完成**（21 cell / 100 MHz / DDDSU / 64T4R），见 [`RTSR/README.md`](RTSR/README.md)
 
 ## 参考
 
@@ -440,6 +451,7 @@ bash src/meta_tuning_mg4.sh 2>&1 | tee experiment/local_tuning_lol_MG4/run.log
 - DIV2K 数据集：https://data.vision.ee.ethz.ch/cvl/DIV2K/
 - VSD4K 数据集（用于元调优）：可从 [CaFM-Pytorch-ICCV2021](https://github.com/Neural-video-delivery/CaFM-Pytorch-ICCV2021) 仓库获取
 - RTSR 论文：[WCNC 2023] Real-Time Super-Resolution: A New Mechanism for XR over 5G-Advanced
+  （复现见 [`RTSR/README.md`](RTSR/README.md)）
 
 ## 许可
 
