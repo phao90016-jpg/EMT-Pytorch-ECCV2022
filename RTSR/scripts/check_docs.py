@@ -64,6 +64,10 @@ def check_deviation_count():
 def check_links():
     files = [os.path.join(DOCS, f) for f in sorted(os.listdir(DOCS)) if f.endswith(".md")]
     files.append(os.path.join(REPO, "README.md"))
+    # the repository root README links into RTSR/, so it must be validated too
+    root_readme = os.path.join(os.path.dirname(REPO), "README.md")
+    if os.path.isfile(root_readme):
+        files.append(root_readme)
     checked = 0
     for path in files:
         base = os.path.dirname(path)
@@ -74,7 +78,7 @@ def check_links():
             checked += 1
             if not os.path.exists(resolved):
                 problems.append("%s: broken link -> %s" % (os.path.relpath(path, REPO), target))
-    print("checked %d relative links" % checked)
+    print("checked %d relative links in %d files" % (checked, len(files)))
 
 
 def main():
