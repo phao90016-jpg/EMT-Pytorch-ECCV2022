@@ -35,7 +35,9 @@ def run(scheme, ue_per_cell, duration_s=6.0, seed=1, warmup_s=1.0, rb_util=None)
     sch = Scheduler(sc, mode, topo)
     if rb_util is not None:
         sch.rb_utilization = rb_util
-    tr = Traffic(sc, mode, topo, seed=seed)
+    # capacity per cell from the ns-3 stage: 125 / 191 / 145 Mbps at 6 / 12 / 18 UE/cell
+    cap = {6: 125.0, 12: 191.0, 18: 145.0}.get(ue_per_cell, 190.0)
+    tr = Traffic(sc, mode, topo, seed=seed, capacity_mbps_per_cell=cap)
     if scheme == "rtsr":
         tr.bitrate_mbps = 10.0
         tr.model_bytes_per_s = 530.0 * 1024.0 / 6.0
@@ -55,7 +57,7 @@ def run(scheme, ue_per_cell, duration_s=6.0, seed=1, warmup_s=1.0, rb_util=None)
         served = np.zeros(topo.n_ue)
         sizes = []
         for (ci, ues, n_rb) in grants:
-            b = np.minimum(link.tb_bytes(n_rb, sinr[ues]), tr.backlog[ues])
+            b = np.minimum(link.tb_bytes(n_rb, sinr[ues]), tr.backlog_bytes[ues])
             served[ues] += b
             sizes.append((ues, b))
             if topo.cell_centre[ci]:
