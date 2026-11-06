@@ -82,7 +82,7 @@ done < "$MANIFEST"
 wait
 
 # ---- merge the per-run summary lines (order: as produced) ----
-for f in "$ROOT"/*/summary_line.txt; do
+for f in "$ROOT"/p6-*/summary_line.txt; do
   [ -f "$f" ] || continue
   run=$(basename "$(dirname "$f")")
   grep -q "^$run," "$SUMMARY" || cat "$f" >> "$SUMMARY"
