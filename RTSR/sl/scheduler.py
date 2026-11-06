@@ -24,11 +24,10 @@ class Scheduler:
         self.rb_utilization = 0.60 if mode.scheduler == "tdma" else 1.0
         self.avg_rate = np.ones(topo.n_ue)
         self.decay = 0.98
-        # ns-3 keeps serving the same UE for a few consecutive TTIs, which is what lets a
-        # frame drain in 5-8 ms instead of the 16 ms a smooth round-robin would need
-        self.burst_tti = 3 if mode.scheduler == "tdma" else 1
-        self._burst_left = np.zeros(topo.n_cells, dtype=int)
-        self._burst_ue = np.full(topo.n_cells, -1, dtype=int)
+        # TDMA serves the UEs of a cell in round-robin order.  A proportional-fair metric
+        # with a 25 ms memory was starving UEs for longer than the 10 ms PDB, which is what
+        # made every low-load frame time out.
+        self._rr = np.zeros(topo.n_cells, dtype=int)
 
     # ------------------------------------------------------------------ main
     def schedule(self, sinr_db, link, backlog_bytes):
@@ -42,15 +41,9 @@ class Scheduler:
             if len(ues) == 0:
                 continue
             if self.mode.scheduler == "tdma":
-                u = int(self._burst_ue[ci])
-                if self._burst_left[ci] <= 0 or u not in ues:
-                    se = link.se(sinr_db[ues])
-                    inst = se * self.rb_utilization * self.n_rb * 12 * 12 / 8.0
-                    metric = inst / np.maximum(self.avg_rate[ues], 1e-9)
-                    u = int(ues[int(np.argmax(metric))])
-                    self._burst_ue[ci] = u
-                    self._burst_left[ci] = self.burst_tti
-                self._burst_left[ci] -= 1
+                # round-robin over the UEs that currently have data
+                u = int(ues[self._rr[ci] % len(ues)])
+                self._rr[ci] += 1
                 n_rb = max(1, int(round(self.rb_utilization * self.n_rb)))
                 grants.append((ci, np.array([u]), np.array([n_rb])))
             else:
