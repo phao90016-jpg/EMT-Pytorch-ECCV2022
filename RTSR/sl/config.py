@@ -16,7 +16,7 @@ class Scenario:
 
     # --- topology ---
     site_rings: int = 1            # 1 -> 7 sites -> 21 cells (the measured ones)
-    interferer_rings: int = 2      # extra rings used only as interference (wraparound)
+    interferer_rings: int = 1      # extra rings used only as interference (wraparound)
     isd_m: float = 200.0
     sectors: int = 3
     sector_bearings_deg: Tuple[float, ...] = (0.0, 120.0, 240.0)
