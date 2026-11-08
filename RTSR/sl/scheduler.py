@@ -22,8 +22,8 @@ class Scheduler:
         self.n_rbg = int(np.ceil(self.n_rb / self.rbg_size))
         # calibrated so that the conservative mode reproduces the ns-3 stage's ~190 Mbps
         # fixed grant size, as in the ns-3 stage: ~29 RB per TB, ~4 TBs per DL TTI
-        self.grant_rb = 29
-        self.served_per_tti = 4
+        self.grant_rb = 68
+        self.served_per_tti = 2
         self.rb_utilization = (self.grant_rb * self.served_per_tti) / float(self.n_rb)
         self.avg_rate = np.ones(topo.n_ue)
         self.decay = 0.98
