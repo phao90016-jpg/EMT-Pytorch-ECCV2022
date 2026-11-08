@@ -21,7 +21,10 @@ class Scheduler:
         self.rbg_size = mode.rbg_size
         self.n_rbg = int(np.ceil(self.n_rb / self.rbg_size))
         # calibrated so that the conservative mode reproduces the ns-3 stage's ~190 Mbps
-        self.rb_utilization = 0.60 if mode.scheduler == "tdma" else 1.0
+        # fixed grant size, as in the ns-3 stage: ~29 RB per TB, ~4 TBs per DL TTI
+        self.grant_rb = 29
+        self.served_per_tti = 4
+        self.rb_utilization = (self.grant_rb * self.served_per_tti) / float(self.n_rb)
         self.avg_rate = np.ones(topo.n_ue)
         self.decay = 0.98
         # TDMA serves the UEs of a cell in round-robin order.  A proportional-fair metric
@@ -41,11 +44,12 @@ class Scheduler:
             if len(ues) == 0:
                 continue
             if self.mode.scheduler == "tdma":
-                # round-robin over the UEs that currently have data
-                u = int(ues[self._rr[ci] % len(ues)])
-                self._rr[ci] += 1
-                n_rb = max(1, int(round(self.rb_utilization * self.n_rb)))
-                grants.append((ci, np.array([u]), np.array([n_rb])))
+                # round-robin, `served_per_tti` UEs per TTI, each getting `grant_rb` RBs
+                take = min(self.served_per_tti, len(ues))
+                picked = np.array([int(ues[(self._rr[ci] + j) % len(ues)])
+                                   for j in range(take)])
+                self._rr[ci] += take
+                grants.append((ci, picked, np.full(take, self.grant_rb)))
             else:
                 grants.extend(self._ofdma_pf(ci, ues, sinr_db, link))
         return grants

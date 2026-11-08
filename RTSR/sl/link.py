@@ -17,10 +17,11 @@ class Link:
     def __init__(self, sc, mode):
         self.sc = sc
         self.mode = mode
+        # conservative must reproduce the ns-3 stage's ~7.3 bits/RE on a 29-RB TB
         if mode.use_3gpp_curves:
             self.alpha, self.gap_db = 0.85, 0.0
         else:
-            self.alpha, self.gap_db = 0.75, 3.0
+            self.alpha, self.gap_db = 0.85, 1.0
         self.n_layers = 1
 
     def se(self, sinr_db) -> np.ndarray:
