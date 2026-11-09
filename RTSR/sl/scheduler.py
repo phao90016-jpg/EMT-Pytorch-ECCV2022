@@ -23,6 +23,7 @@ class Scheduler:
         # calibrated so that the conservative mode reproduces the ns-3 stage's ~190 Mbps
         # fixed grant size, as in the ns-3 stage: ~29 RB per TB, ~4 TBs per DL TTI
         self.grant_rb = 68
+        self.rb_budget = max(1, int(round(0.5 * self.n_rb)))   # per cell, per TTI
         self.served_per_tti = 2
         self.rb_utilization = (self.grant_rb * self.served_per_tti) / float(self.n_rb)
         self.avg_rate = np.ones(topo.n_ue)
@@ -52,12 +53,22 @@ class Scheduler:
             if len(ues) == 0:
                 continue
             if self.mode.scheduler == "tdma":
-                # round-robin, `served_per_tti` UEs per TTI, each getting `grant_rb` RBs
+                # round-robin, `served_per_tti` UEs per TTI.  The grant is sized to the
+                # UE's backlog so a frame drains in one or two services (and the buffer is
+                # empty before the next frame arrives); the total per cell is still capped
+                # at `rb_budget` RBs per TTI.
                 take = min(self.served_per_tti, len(ues))
                 picked = np.array([int(ues[(self._rr[ci] + j) % len(ues)])
                                    for j in range(take)])
                 self._rr[ci] += take
-                grants.append((ci, picked, np.full(take, self.grant_rb)))
+                se = np.maximum(link.se(sinr_db[picked]), 0.1)
+                bytes_per_rb = se * 12 * 12 / 8.0
+                need = np.ceil(backlog_bytes[picked] / bytes_per_rb)
+                budget = int(self.rb_budget)
+                share = np.full(take, budget // max(take, 1))
+                n_rb = np.clip(need.astype(int), 1, None)
+                n_rb = np.minimum(n_rb, share)
+                grants.append((ci, picked, n_rb))
             else:
                 grants.extend(self._ofdma_pf(ci, ues, sinr_db, link))
         return grants
