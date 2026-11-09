@@ -27,13 +27,15 @@ class Channel:
         sigma = np.where(los, 4.0, 6.0)
         self.shadow_db = rng.normal(0.0, 1.0, self.d3.shape) * sigma
 
-        if mode.o2i_model:
-            # 3GPP O2I (TR 38.901 7.4.3), simplified: wall loss + indoor depth term
-            depth = rng.uniform(0.0, 25.0, self.d3.shape)
-            pen = 10.0 + 0.5 * depth
-            pen = np.where(topo.ue_indoor[:, None], pen, 0.0)
-        else:
-            pen = np.where(topo.ue_indoor[:, None], sc.indoor_penalty_db, 0.0)
+        # Indoor penetration is always a *distribution* (TR 38.901 7.4.3: wall loss plus a
+        # term proportional to the indoor depth).  The ideal mode uses the low-loss wall
+        # (10 dB); the conservative mode uses the high-loss one (20 dB) but still varies
+        # the depth, because a flat penalty puts every indoor UE at the same disadvantage
+        # and creates an artificial SINR low tail that no scheduling can recover.
+        depth = rng.uniform(0.0, 25.0, self.d3.shape)      # metres inside the building
+        wall = 10.0 if mode.o2i_model else sc.indoor_penalty_db
+        pen = wall + 0.5 * depth
+        pen = np.where(topo.ue_indoor[:, None], pen, 0.0)
         self.penetration_db = pen
 
         self.beam_gain_db = self._beam_gain()
