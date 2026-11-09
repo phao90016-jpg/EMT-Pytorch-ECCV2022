@@ -43,7 +43,7 @@ def run(scheme, ue_per_cell, duration_s=6.0, seed=1, warmup_s=1.0):
             tr.reset_counters()
             bits = 0.0
         sinr = ch.sinr_db(active=active)
-        grants = sch.schedule(sinr, link, tr.backlog_bytes)
+        grants = sch.schedule(sinr, link, tr.backlog_bytes, tr.frame_backlog_bytes)
         served = np.zeros(topo.n_ue)
         sizes = []
         for (ci, ues, n_rb) in grants:

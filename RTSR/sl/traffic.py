@@ -102,5 +102,9 @@ class Traffic:
         self.frames_ok[:] = 0
 
     @property
+    def frame_backlog_bytes(self):
+        return self.frame_backlog
+
+    @property
     def backlog_bytes(self):
         return self.frame_backlog + self.model_backlog

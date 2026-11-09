@@ -31,10 +31,10 @@ class Scheduler:
         # with a 25 ms memory was starving UEs for longer than the 10 ms PDB, which is what
         # made every low-load frame time out.
         self._rr = np.zeros(topo.n_cells, dtype=int)
-        self.min_tx_bytes = 0.0
+        self.min_tx_bytes = 2000.0
 
     # ------------------------------------------------------------------ main
-    def schedule(self, sinr_db, link, backlog_bytes):
+    def schedule(self, sinr_db, link, backlog_bytes, frame_backlog=None):
         """Return [(cell, ue_indices, rb_counts)] for this TTI."""
         grants = []
         for ci in range(self.topo.n_cells):
@@ -44,7 +44,11 @@ class Scheduler:
             # only UEs with enough data to fill a meaningful grant; the paced model
             # stream would otherwise keep every RTSR UE permanently "eligible" and waste
             # grants on a few dozen bytes
-            ues = ues[backlog_bytes[ues] >= self.min_tx_bytes]
+            if frame_backlog is not None:
+                keep = (frame_backlog[ues] > 0.0) | (backlog_bytes[ues] >= self.min_tx_bytes)
+            else:
+                keep = backlog_bytes[ues] > 0.0
+            ues = ues[keep]
             if len(ues) == 0:
                 continue
             if self.mode.scheduler == "tdma":
