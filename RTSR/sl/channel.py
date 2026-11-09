@@ -155,7 +155,7 @@ class Channel:
         act = active.astype(float)
 
         p_serv = p_lin[idx, served]
-        total = p_lin @ act                       # BLAS mat-vec over the cell dimension
+        total = (p_lin * act).sum(axis=1)          # mat-vec is pathologically slow in this env
         interf = np.maximum(total - p_serv, 0.0)
         noise = 10.0 ** (self.sc.noise_dbm_wideband / 10.0)
         sinr = p_serv / (interf + noise)
