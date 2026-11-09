@@ -48,7 +48,16 @@ class Channel:
         self.activity = float(np.clip(load_per_cell_mbps / 190.0, 0.02, 1.0))
         self._rng = rng
 
+        # static received power (path loss + shadowing + penetration + beam): computed
+        # once, never changes during the run
+        self._p_rx_static = (sc.gnb_power_dbm
+                             - self.path_loss_db
+                             - self.shadow_db
+                             - self.penetration_db
+                             + self.beam_gain_db)
+
         self._fading = None
+        self._p_lin = None                 # cached linear power matrix
         self.coherence_tti = max(1, int(round(0.045 / sc.tti_s)))
         self.refresh_fading()
         self.tti_count = 0
@@ -113,6 +122,9 @@ class Channel:
         re = rng.normal(size=shape) / np.sqrt(2.0)
         im = rng.normal(size=shape) / np.sqrt(2.0)
         self._fading = re ** 2 + im ** 2          # mean power 1 (0 dB)
+        # linear power matrix for this fading realisation; reused until the next refresh
+        self._p_lin = 10.0 ** ((self._p_rx_static
+                                + 10.0 * np.log10(self._fading + 1e-12)) / 10.0)
 
     def advance(self):
         self.tti_count += 1
@@ -131,10 +143,10 @@ class Channel:
         """Wideband SINR per UE.
 
         `active` is a boolean (n_cells,) mask of cells transmitting in this TTI.  If None,
-        every cell is active (upper bound on interference).
+        every cell is active (upper bound on interference).  Uses the cached linear power
+        matrix, so the per-TTI cost is one matrix-vector product.
         """
-        p = self.rx_power_dbm() + 10.0 * np.log10(self._fading + 1e-12)
-        p_lin = 10.0 ** (p / 10.0)
+        p_lin = self._p_lin
         served = self.topo.ue_cell
         idx = np.arange(self.topo.n_ue)
 
@@ -143,8 +155,7 @@ class Channel:
         act = active.astype(float)
 
         p_serv = p_lin[idx, served]
-        total = (p_lin * act[None, :]).sum(axis=1)
-        # remove the UE's own serving-cell contribution from the interference sum
+        total = p_lin @ act                       # BLAS mat-vec over the cell dimension
         interf = np.maximum(total - p_serv, 0.0)
         noise = 10.0 ** (self.sc.noise_dbm_wideband / 10.0)
         sinr = p_serv / (interf + noise)
