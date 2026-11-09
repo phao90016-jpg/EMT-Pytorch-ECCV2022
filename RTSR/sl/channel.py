@@ -98,9 +98,11 @@ class Channel:
         gain = self._element_pattern_db(off, elev + np.deg2rad(sc.downtilt_deg))
 
         array_db = 10.0 * np.log10(sc.gnb_elements)
-        served = np.zeros_like(gain)
-        served[np.arange(topo.n_ue), topo.ue_cell] = array_db
-        return gain + served
+        # exact steering: the serving link sees boresight (0 dB) plus the array factor,
+        # not the off-boresight element attenuation
+        gain = gain.copy()
+        gain[np.arange(topo.n_ue), topo.ue_cell] = array_db
+        return gain
 
     # ---------------------------------------------------------------- fading
     def refresh_fading(self, rng=None):
