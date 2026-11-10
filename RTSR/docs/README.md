@@ -17,6 +17,28 @@ docs/
 └── figs/            所有图
 ```
 
+## 术语表（先看这个，避免混淆）
+
+| 缩写 | 全称 | 中文 | 在本项目里指什么 |
+|---|---|---|---|
+| **LL** | Link-Level | 链路级仿真 | 逐符号/逐比特、几秒、极准极慢（如 Vienna 5G LL）。**本项目的阶段一近似它** |
+| **SL** | **System-Level** | **系统级仿真** | 多小区、多用户、长时间，物理层用查表。**就是 `RTSR/sl/` 那个目录、阶段二** |
+| LD | Low Definition | 低分辨率流 | RTSR 发送的那条视频流（10 Mbps，540p/1080p）|
+| SR | Super-Resolution | 超分重建 | 接收端用 EDSR 把 LD 重建回 HR。**不产生独立流量**，别和 SL 混 |
+| TB | Transport Block | 传输块 | MAC 层一次调度的数据块（约 3.6 kB）|
+| PDB | Packet Delay Budget | 时延预算 | 论文规定帧级 **10 ms**（基站缓冲等待）|
+| FSR | Frame Success Rate | 帧成功率 | **每 UE** 的成功帧/发送帧；论文判据 **> 99.5%** 算满意 |
+| CQI / MCS | — | 信道质量/调制编码 | 链路自适应用 |
+| OFDMA | Orthogonal FDMA | 正交频分多址 | 理想档的调度方式（每个 RBG 分给不同 UE）|
+| TDMA | Time Division MA | 时分多址 | 保守档的调度方式（每 TTI 服务少数 UE）|
+| O2I | Outdoor-to-Indoor | 室外到室内 | 3GPP 的室内穿透模型（墙损 + 深度相关项）|
+| RSRP / SINR | — | 参考信号接收功率 / 信干噪比 | — |
+
+**最容易混的两组**：
+
+- **SL ≠ SR**：SL 是"系统级仿真器"（工具），SR 是"超分重建"（算法）。
+- **SL ≠ 阶段二的名字**：项目里 `sl/` 恰好就是阶段二，但 `sl` 的本义是 system-level。
+
 ## 按需求找文档
 
 | 我想…… | 看这个 |

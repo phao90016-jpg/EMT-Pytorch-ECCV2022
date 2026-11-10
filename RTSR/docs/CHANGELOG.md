@@ -67,3 +67,16 @@ docs/                                  docs/
 | `RTSR/docs/06_路线与后续.md` | `RTSR/docs/stage2/03_路线与后续.md` |
 | `RTSR/docs/07_阶段二结果.md` | `RTSR/docs/stage2/02_结果与对照.md` |
 | `RTSR/docs/05_答辩材料.md` | 不变 |
+
+## 2026-11-10（补）：新增术语表
+
+`docs/README.md` 顶部新增术语表，覆盖 LL / **SL** / LD / SR / TB / PDB / FSR 等缩写。
+
+**为什么加**：`sl/` 这个目录名是 System-Level 的缩写，与阶段二恰好对应，但容易和
+
+- **SR**（Super-Resolution，算法层）混淆；
+- "阶段二"这个说法混为一谈（SL 是仿真器类型，不是阶段编号）。
+
+术语表里特别标注了两组最容易混的概念：**SL ≠ SR**、**SL ≠ 阶段二的名字**。
+
+`RTSR/README.md` 的导航里也加了一行指向该术语表。

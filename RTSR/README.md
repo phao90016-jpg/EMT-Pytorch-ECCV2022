@@ -49,7 +49,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/README.md`](docs/README.md) | 文档总索引（按"我想查什么"编排）|
+| [`docs/README.md`](docs/README.md) | 文档总索引（按"我想查什么"编排）+ **术语表**（SL/LD/SR/TB/PDB/FSR）|
 | [`docs/05_答辩材料.md`](docs/05_答辩材料.md) | 一页纸提纲 + 详稿 + 预设问答 |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | **文档结构调整记录** |
 | [`algorithm/README.md`](algorithm/README.md) | 算法层工具与脚本 |
