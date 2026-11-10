@@ -31,7 +31,7 @@ def check_summary_in_doc03():
     if not os.path.isfile(SUMMARY):
         problems.append("summary2.csv missing: %s" % SUMMARY)
         return
-    doc = read(os.path.join(DOCS, "03_结果与对照.md"))
+    doc = read(os.path.join(DOCS, "stage1", "03_结果与对照.md"))
     with open(SUMMARY, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     for r in rows:
@@ -44,7 +44,7 @@ def check_summary_in_doc03():
 
 
 def check_deviation_count():
-    doc = read(os.path.join(DOCS, "02_实现与偏差.md"))
+    doc = read(os.path.join(DOCS, "stage1", "02_实现与偏差.md"))
     m = re.search(r"偏差总表（\*\*唯一清单，共 (\d+) 条\*\*）", doc)
     if not m:
         problems.append("docs/02: cannot find the deviation-count header")

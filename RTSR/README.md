@@ -25,31 +25,55 @@
 
 ## 文档导航
 
+文档按**两个阶段**分开放，另有跨阶段的答辩材料。总索引见 [`docs/README.md`](docs/README.md)。
+
+**阶段一：ns-3 + 5G-LENA（6 s 高保真）**
+
 | 文档 | 内容 |
 |---|---|
-| [`docs/01_论文与场景.md`](docs/01_论文与场景.md) | 论文参数逐项对照（唯一参数权威版）|
-| [`docs/02_实现与偏差.md`](docs/02_实现与偏差.md) | 实现决策、满意率口径、**13 条偏差总表**、踩坑清单 |
-| [`docs/03_结果与对照.md`](docs/03_结果与对照.md) | 所有结果数字与论文对照（唯一数字权威版）|
-| [`docs/04_执行手册.md`](docs/04_执行手册.md) | 编译、运行、看进度、排错 |
-| [`docs/05_答辩材料.md`](docs/05_答辩材料.md) | 一页纸提纲 + 详稿 + 7 个预设问答 |
-| [`docs/06_路线与后续.md`](docs/06_路线与后续.md) | 两阶段路线状态、待办、成本模型 |
-| [`sl/README.md`](sl/README.md) | **阶段二设计**：10 个未定假设、两档标定目标、模块设计 |
-| [`docs/07_阶段二结果.md`](docs/07_阶段二结果.md) | **阶段二结果**：M1/M2/M5 验证数据、M3 根因分析 |
+| [`stage1/01_论文与场景.md`](docs/stage1/01_论文与场景.md) | 论文参数逐项对照（唯一参数权威版）|
+| [`stage1/02_实现与偏差.md`](docs/stage1/02_实现与偏差.md) | 实现决策、满意率口径、**13 条偏差总表**、踩坑清单 |
+| [`stage1/03_结果与对照.md`](docs/stage1/03_结果与对照.md) | ns-3 结果数字与论文对照（唯一数字权威版）|
+| [`stage1/04_执行手册.md`](docs/stage1/04_执行手册.md) | 编译、运行、看进度、排错 |
+
+**阶段二：系统级仿真器（1000 s 统计）**
+
+| 文档 | 内容 |
+|---|---|
+| [`stage2/01_设计说明.md`](docs/stage2/01_设计说明.md) | 索引到 [`sl/README.md`](sl/README.md)（10 个未定假设、两档标定）|
+| [`stage2/02_结果与对照.md`](docs/stage2/02_结果与对照.md) | **M6 正式结果**、两阶段对照图、与论文的诚实对照 |
+| [`stage2/03_路线与后续.md`](docs/stage2/03_路线与后续.md) | 两阶段路线状态、未完成清单 |
+| [`sl/README.md`](sl/README.md) | 系统级仿真器设计 + 10 轮迭代记录（代码目录内）|
+
+**跨阶段**
+
+| 文档 | 内容 |
+|---|---|
+| [`docs/README.md`](docs/README.md) | 文档总索引（按"我想查什么"编排）|
+| [`docs/05_答辩材料.md`](docs/05_答辩材料.md) | 一页纸提纲 + 详稿 + 预设问答 |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | **文档结构调整记录** |
 | [`algorithm/README.md`](algorithm/README.md) | 算法层工具与脚本 |
 
 ## 目录结构
 
 ```
 RTSR/
-├── docs/                 文档（01–07）
-├── sl/                   阶段二：系统级仿真器（Python）
-├── rtsr-simulation.cc    主仿真（拓扑/天线/业务/埋点）
-├── rtsr-frame-agents.h   帧源与帧宿（FSR 统计）
-├── layer_stats.py        五层丢包合并 + 一致性校验
-├── scripts/              runner（串行/并行）、统计、状态脚本
-├── patches/              ns-3 补丁（RLC 真正丢弃）
-├── results/              每次运行的产物（layer_report.md + csv）
-└── archive/              已合并的历史文档（只读）
+├── README.md              ← 结论速览 + 文档导航
+├── docs/
+│   ├── README.md          文档总索引
+│   ├── CHANGELOG.md       结构调整记录
+│   ├── stage1/            阶段一：ns-3（01-04）
+│   ├── stage2/            阶段二：系统级仿真器（01-03）
+│   ├── 05_答辩材料.md     跨阶段
+│   └── figs/              所有图
+├── sl/                    阶段二代码 + 设计文档 + 结果
+├── rtsr-simulation.cc     阶段一主仿真
+├── rtsr-frame-agents.h    阶段一帧源/帧宿
+├── layer_stats.py         阶段一五层账本
+├── scripts/               运行与校验脚本
+├── results/p6/            阶段一 10 条 run
+├── algorithm/             算法层（EDSR）
+└── archive/               历史材料
 ```
 
 ## 快速开始
@@ -68,7 +92,7 @@ setsid nohup bash RTSR/scripts/p6_run_parallel.sh \
 bash RTSR/scripts/p6_status.sh
 ```
 
-详见 [`docs/04_执行手册.md`](docs/04_执行手册.md)。
+详见 [`docs/04_执行手册.md`](docs/stage1/04_执行手册.md)。
 
 ## 文档规则
 
