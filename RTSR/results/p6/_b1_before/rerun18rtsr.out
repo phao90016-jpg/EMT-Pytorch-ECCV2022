@@ -1,0 +1,1 @@
+[run ] p6-18-rtsr  --trafficModel=paper --preset=paperTable3 --sectorized=1 --numSectors=3 --siteRings=1 --statsRings=1 --indoorRatio=0.8 --ueSpeedKmh=3 --tddPattern=DDDSU --checkpointEveryMs=5000 --warmupMs=1000 --progressEveryMs=250 --enablePing=0 --flowmonProbes=0 --rngRun=1 --scheme=rtsr --uePerCell=18 --appDuration=6000

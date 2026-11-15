@@ -73,6 +73,8 @@ def main():
             if scheme == "conventional":
                 if i == 0:
                     off = (17, -4)      # first point sits on the 90% line
+                elif y < 0.5 and i == len(v["ue"]) - 1:
+                    off = (-18, -3)     # 18 UE/cell: both schemes sit at 0, keep labels apart
                 elif y < 6:
                     off = (0, 13)       # low points would be clipped below the axis
             ax1.annotate("%.1f" % y, (x, y), textcoords="offset points",

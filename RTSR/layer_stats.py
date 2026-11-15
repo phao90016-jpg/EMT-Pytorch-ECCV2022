@@ -111,7 +111,12 @@ def main():
     # ---- L3 ----
     rlc_sdu = sum(int(r["dropped_sdus"]) for r in drops) if drops else 0
     rlc_frames = len(drops) if drops else 0
-    video_sdu_total = rlc_sdu + rx_pkts
+    # Every video IP packet becomes exactly one RLC SDU, so the SDU total is the IP
+    # transmit count.  Do NOT use `rlc_sdu + rx_pkts`: rx_pkts only counts packets of
+    # frames the sink actually opened, so the denominator shrinks with the loss and
+    # inflates this rate (it read 25.7% vs a true 22.1% on the 18 UE/cell run, which
+    # broke the "frame loss >= SDU loss" consistency check).
+    video_sdu_total = ip_tx if ip_tx else (rlc_sdu + rx_pkts)
     l3_rate = pct(rlc_sdu, video_sdu_total)
 
     # ---- L4 / L5 ----
@@ -154,7 +159,8 @@ def main():
     if model_ip:
         L.append(f"| L2 IP | 模型流 tx / rx | {model_ip['tx']} / {model_ip['rx']} | "
                  f"丢 {model_ip['tx'] - model_ip['rx']} |")
-    L.append(f"| L3 RLC | 视频 SDU 丢弃 | {rlc_sdu} | 可归属 {rlc_frames} 帧（**{l3_rate:.3f}%**） |")
+    L.append(f"| L3 RLC | 视频 SDU 丢弃 | {rlc_sdu} / {video_sdu_total} | "
+             f"**{l3_rate:.3f}%**，涉及 {rlc_frames} 帧 |")
     if mac is not None:
         L.append(f"| L4 MAC | 调度 TB / 字节 | {mac_tbs} / {mac_bytes / 1048576:.2f} MB | "
                  f"重传 {mac_retx} |")

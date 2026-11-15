@@ -1,0 +1,6 @@
+# 18 UE/cell RTSR -- post-B1 re-run (2026-11-10).
+# Pre-B1 data of this point archived at results/p6/_b1_before/p6-18-rtsr
+# (it reported 22.49% with the model-update stream 99.85% dropped).
+# Common configuration lives in p6_run.sh; only per-run args are listed here.
+
+p6-18-rtsr|--scheme=rtsr --uePerCell=18 --appDuration=6000
