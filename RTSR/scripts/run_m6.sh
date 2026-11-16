@@ -2,9 +2,12 @@
 # M6: 36 runs (6 UE/cell points x 2 schemes x 3 seeds), 1000 s each, 5 in parallel.
 set -uo pipefail
 cd /home/penghao/code/EMT-Pytorch-ECCV2022 || exit 1
+# Guard: the results must land under RTSR/sl/results (the simulator lives there),
+# not in a stray top-level sl/ (that bug silently ran a full sweep into the void).
+case "$(pwd)/RTSR/sl/results" in */RTSR/sl/results) ;; *) echo "bad cwd"; exit 1 ;; esac
 
-OUT=sl/results/m6
-LOG=sl/results/m6/logs
+OUT=RTSR/sl/results/m6
+LOG=RTSR/sl/results/m6/logs
 mkdir -p "$OUT" "$LOG"
 MAXJOBS=5
 

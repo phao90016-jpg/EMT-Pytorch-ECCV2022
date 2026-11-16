@@ -103,6 +103,11 @@ class Mode:
     model_feedback: bool = False   # True: mean = 20.8 kB * (2 - q)
     # 7/8 PDB handling
     pdb_granularity: str = "sdu"   # "sdu" | "frame"
+    # 8b inter-cell interference suppression from beamforming / MU-MIMO (dB).
+    # Calibrated against the *per-UE* SINR distribution measured in ns-3 (p5 19.1 dB,
+    # p50 31.2 dB at 6 UE/cell).  Without it the simulator sums every neighbour's
+    # full-band power, which is 16 dB too pessimistic at the low tail.
+    icic_atten_db: float = 0.0
     # 9 wraparound
     wraparound: bool = True
     # 10 seeds
@@ -123,6 +128,7 @@ class Mode:
             o2i_model=True,
             model_feedback=True,
             pdb_granularity="frame",
+            icic_atten_db=16.0,
             wraparound=True,
             n_seeds=3,
         )

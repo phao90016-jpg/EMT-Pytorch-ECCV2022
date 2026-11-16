@@ -46,6 +46,12 @@ class Channel:
         if load_per_cell_mbps is None:
             load_per_cell_mbps = sc.ue_per_cell * 20.0
         self.activity = float(np.clip(load_per_cell_mbps / 190.0, 0.02, 1.0))
+
+        # Inter-cell interference suppression (beam nulling / MU-MIMO spatial isolation).
+        # The neighbour term below is a full-band power sum, i.e. every neighbour is
+        # assumed to jam every RB.  With beamforming that is 16 dB too pessimistic at the
+        # low tail (see Mode.icic_atten_db), so the ideal mode discounts it.
+        self.icic_lin = 10.0 ** (-getattr(mode, "icic_atten_db", 0.0) / 10.0)
         self._rng = rng
 
         # static received power (path loss + shadowing + penetration + beam): computed
@@ -156,7 +162,7 @@ class Channel:
 
         p_serv = p_lin[idx, served]
         total = (p_lin * act).sum(axis=1)          # mat-vec is pathologically slow in this env
-        interf = np.maximum(total - p_serv, 0.0)
+        interf = np.maximum(total - p_serv, 0.0) * self.icic_lin
         noise = 10.0 ** (self.sc.noise_dbm_wideband / 10.0)
         sinr = p_serv / (interf + noise)
         return 10.0 * np.log10(sinr + 1e-12)

@@ -26,13 +26,15 @@ def capacity(mode, ue_per_cell=12, n_tti=400, seed=1):
     sch = Scheduler(sc, mode, topo)
 
     active = np.array([len(topo.cell_ues[ci]) > 0 for ci in range(topo.n_cells)])
+    # every UE is permanently backlogged: this measures the cell capacity, not traffic
+    backlog = np.full(topo.n_ue, 1e9)
     bits_centre = 0.0
     se_acc, rb_acc, n_c, ue_c = 0.0, 0.0, 0, 0
     n_centre = int(topo.cell_centre.sum())
     for _ in range(n_tti):
         ch.advance()
         sinr = ch.sinr_db(active=active)
-        grants = sch.schedule(sinr, link)
+        grants = sch.schedule(sinr, link, backlog)
         sizes = []
         for (ci, ues, n_rb) in grants:
             b = link.tb_bytes(n_rb, sinr[ues])
