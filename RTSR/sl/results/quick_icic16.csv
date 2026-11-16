@@ -1,0 +1,10 @@
+ue,scheme,satisfied_pct,mean_fsr_pct,note
+6,conv,92.98,99.85,57cells 60s seed1
+9,conv,95.13,99.79,57cells 60s seed1
+12,conv,94.01,99.78,57cells 60s seed1
+18,conv,91.33,99.49,57cells 60s seed1
+23,conv,83.22,98.46,57cells 60s seed1
+6,rtsr,95.91,99.94,57cells 60s seed1
+12,rtsr,97.37,99.93,57cells 60s seed1
+18,rtsr,96.78,99.89,57cells 60s seed1
+23,rtsr,95.88,99.78,57cells 60s seed1
