@@ -57,6 +57,7 @@
 | [`stage3/README.md`](docs/stage3/README.md) | 三个目标与当前差距 |
 | [`stage3/01_差距分析.md`](docs/stage3/01_差距分析.md) | 容量上限推导、论文口径推断、FSR 天花板根因 |
 | [`stage3/02_实验计划.md`](docs/stage3/02_实验计划.md) | P0–P4 任务、验收标准、机时预算 |
+| [`stage3/03_总结.md`](docs/stage3/03_总结.md) | **阶段三总结**（可独立阅读）|
 | [`sl/README.md`](sl/README.md) | 系统级仿真器设计 + 10 轮迭代记录（代码目录内）|
 
 **跨阶段**
