@@ -35,6 +35,8 @@ def main():
     ap.add_argument("--scheme", choices=("conv", "rtsr"), default="conv")
     ap.add_argument("--scheduler", choices=("tdma", "ofdma_pf"), default=None,
                     help="override the scheduler only (channel stays ideal)")
+    ap.add_argument("--icic-db", type=float, default=None,
+                    help="override Mode.icic_atten_db (inter-cell interference suppression)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--site-rings", type=int, default=1,
                     help="0 = single site; 1 = 7 sites (21 cells)")
@@ -46,6 +48,8 @@ def main():
     mode = Mode.ideal()
     if args.scheduler:
         mode.scheduler = args.scheduler
+    if args.icic_db is not None:
+        mode.icic_atten_db = args.icic_db
     sc = Scenario(ue_per_cell=args.ue, duration_s=args.duration, seed=args.seed,
                   site_rings=args.site_rings, interferer_rings=args.interferer_rings)
     topo = Topology(sc)
@@ -93,9 +97,9 @@ def main():
     mean_se = np.where(se_n > 0, se_acc / np.maximum(se_n, 1), 0.0)
     mean_sinr = np.where(se_n > 0, sinr_acc / np.maximum(se_n, 1), -99.0)
 
-    print("cells=%d (centre %d)  site_rings=%d  interferer_rings=%d  scheduler=%s"
+    print("cells=%d (centre %d)  site_rings=%d  interferer_rings=%d  scheduler=%s  icic=%.1f dB"
           % (topo.n_cells, int(topo.cell_centre.sum()), args.site_rings,
-             args.interferer_rings, mode.scheduler))
+             args.interferer_rings, mode.scheduler, mode.icic_atten_db))
     print("wall %.0fs  UE=%d  mean FSR=%.2f%%  satisfied=%d (%.2f%%)"
           % (time.time() - t0, topo.n_ue, fsr.mean(), int((fsr >= 99.5).sum()),
              100.0 * (fsr >= 99.5).mean()))

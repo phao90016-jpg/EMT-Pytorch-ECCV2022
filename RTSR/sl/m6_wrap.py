@@ -10,18 +10,24 @@ import shutil
 import numpy as np
 
 REPO = "/home/penghao/code/EMT-Pytorch-ECCV2022"
-SRC = REPO + "/sl/results/m6"              # where the runner actually wrote (path bug)
-DST = REPO + "/RTSR/sl/results/m6"         # where it belongs
+DST = REPO + "/RTSR/sl/results/m6"         # canonical location (run_m6.sh writes here)
+LEGACY = REPO + "/sl/results/m6"           # where the old buggy runner wrote
 FIG = REPO + "/RTSR/docs/figs"
 
-# ---------------------------------------------------------------- 1. move results
+# ---------------------------------------------------------------- 1. collect results
+# The 2026-11 runner writes straight into DST.  Older runs landed in LEGACY because of a
+# missing RTSR/ prefix; copy those over only when the directory really is different,
+# otherwise shutil.copy would try to copy a file onto itself (SameFileError).
 os.makedirs(DST, exist_ok=True)
-for f in glob.glob(os.path.join(SRC, "*.csv")):
-    shutil.copy(f, DST)
-for f in glob.glob(os.path.join(SRC, "logs", "*.log")):
-    os.makedirs(os.path.join(DST, "logs"), exist_ok=True)
-    shutil.copy(f, os.path.join(DST, "logs"))
-print(f"copied {len(glob.glob(os.path.join(DST, '*.csv')))} csv files to {DST}")
+if os.path.isdir(LEGACY) and os.path.realpath(LEGACY) != os.path.realpath(DST):
+    for f in glob.glob(os.path.join(LEGACY, "*.csv")):
+        shutil.copy(f, DST)
+    if os.path.isdir(os.path.join(LEGACY, "logs")):
+        os.makedirs(os.path.join(DST, "logs"), exist_ok=True)
+        for f in glob.glob(os.path.join(LEGACY, "logs", "*.log")):
+            shutil.copy(f, os.path.join(DST, "logs"))
+    print(f"merged legacy results from {LEGACY}")
+print(f"found {len(glob.glob(os.path.join(DST, '*.csv')))} csv files in {DST}")
 
 # ---------------------------------------------------------------- 2. aggregate
 rows = []
