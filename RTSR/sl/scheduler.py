@@ -23,7 +23,10 @@ class Scheduler:
         # calibrated so that the conservative mode reproduces the ns-3 stage's ~190 Mbps
         # fixed grant size, as in the ns-3 stage: ~29 RB per TB, ~4 TBs per DL TTI
         self.grant_rb = 68
-        self.rb_budget = max(1, int(round(0.5 * self.n_rb)))   # per cell, per TTI
+        self.rb_budget_fraction = 0.61
+        # Calibrated so the conservative mode reproduces the ns-3 stage's ~190 Mbps.
+        # 0.5 gave 154.7 Mbps after the 2026-11 FSR/traffic rework; 0.61 lands on 190.
+        self.rb_budget = max(1, int(round(self.rb_budget_fraction * self.n_rb)))
         self.served_per_tti = 2
         self.rb_utilization = (self.grant_rb * self.served_per_tti) / float(self.n_rb)
         self.avg_rate = np.ones(topo.n_ue)
