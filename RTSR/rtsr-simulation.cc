@@ -16,6 +16,7 @@
 #include "ns3/network-module.h"
 #include "ns3/nr-module.h"
 #include "ns3/nr-mac-scheduler-lc-qos.h"
+#include "ns3/nr-mac-scheduler-lc-rr.h"
 #include "ns3/packet-sink.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/random-variable-stream.h"
@@ -133,6 +134,20 @@ static double g_channelUpdatePeriodMs = 0.0;
 // caps the per-UE rate at TB_size / service_interval and made 18 UE/cell collapse while
 // the spectrum was only a third used.  ofdma-qos splits each slot's RBs among UEs.
 static std::string g_scheduler = "tdma-qos";
+// LC (logical-channel) algorithm used to size the grants: qos | rr.
+static std::string g_lc = "qos";
+// QCI of the video bearer: 68 = NGBR_LOW_LAT_EMBB (PDB 10 ms, the paper value),
+// 9 = NGBR_VIDEO_TCP_DEFAULT (PDB 300 ms).  Diagnostic switch: it shows how much of
+// the measured "capacity" is set by the 10 ms PDB rather than by the air interface.
+static uint16_t g_videoQci = 68;
+// RLC UM discard timer override (ms).  0 = use the bearer PDB (10 ms for QCI 68).
+// Diagnostic: it isolates the PDB from the RLC mode / scheduling priority, which the
+// QCI switch confounds.
+static uint32_t g_rlcDiscardMs = 0;
+// LteRlcUm admission control: when ON (default) a newly arriving SDU is dropped if the
+// head of line has already waited longer than the discard timer.  Turning it OFF lets
+// the RLC queue grow, which exposes the raw air-interface capacity behind the PDB gate.
+static bool g_pdcpDiscard = true;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -1254,6 +1269,11 @@ main(int argc, char* argv[])
     bool flowmonProbes = false;
     double channelUpdatePeriodMs = 0.0;
     std::string scheduler = "tdma-qos";
+    std::string lc = "qos";
+    double forceVideoBitrate = 0.0;
+    uint16_t videoQci = 68;
+    uint32_t rlcDiscardMs = 0;
+    bool pdcpDiscard = true;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1345,8 +1365,25 @@ main(int argc, char* argv[])
                  "Write the per-packet FlowMonitor probe section into the XML (large)",
                  flowmonProbes);
     cmd.AddValue("scheduler",
-                 "MAC scheduler: tdma-qos (default), ofdma-qos, ofdma-pf, ofdma-rr (P6)",
+                 "MAC scheduler: tdma-qos (default), tdma-rr, tdma-pf, tdma-mr, "
+                 "ofdma-qos, ofdma-pf, ofdma-rr (P6)",
                  scheduler);
+    cmd.AddValue("lc",
+                 "LC algorithm that sizes the grants: qos (default) | rr",
+                 lc);
+    cmd.AddValue("pdcpDiscard",
+                 "Diagnostic: RLC UM head-of-line admission control (1 = on, 0 = off)",
+                 pdcpDiscard);
+    cmd.AddValue("rlcDiscardMs",
+                 "Diagnostic: override the RLC UM discard timer (0 = use the bearer PDB)",
+                 rlcDiscardMs);
+    cmd.AddValue("videoQci",
+                 "Diagnostic: QCI of the video bearer (68 = 10 ms PDB, 9 = 300 ms PDB)",
+                 videoQci);
+    cmd.AddValue("forceVideoBitrate",
+                 "Diagnostic: override the per-UE offered load after the scheme default "
+                 "(0 = keep the scheme value)",
+                 forceVideoBitrate);
     cmd.AddValue("channelUpdatePeriodMs",
                  "Reuse the 3GPP channel matrix for this many ms (0 = ns-3 default, "
                  "regenerate every slot); 3 km/h coherence time is ~45 ms (P6)",
@@ -1376,6 +1413,23 @@ main(int argc, char* argv[])
     g_flowmonProbes = flowmonProbes;
     g_channelUpdatePeriodMs = channelUpdatePeriodMs;
     g_scheduler = scheduler;
+    g_lc = lc;
+    g_videoQci = videoQci;
+    g_rlcDiscardMs = rlcDiscardMs;
+    g_pdcpDiscard = pdcpDiscard;
+    if (!g_pdcpDiscard)
+    {
+        Config::SetDefault("ns3::LteRlcUm::EnablePdcpDiscarding", BooleanValue(false));
+        std::cout << "[RLC] head-of-line admission control DISABLED (diagnostic)"
+                  << std::endl;
+    }
+    if (g_rlcDiscardMs > 0)
+    {
+        Config::SetDefault("ns3::LteRlcUm::DiscardTimerMs",
+                           UintegerValue(g_rlcDiscardMs));
+        std::cout << "[RLC] UM discard timer overridden to " << g_rlcDiscardMs
+                  << " ms (default = bearer PDB)" << std::endl;
+    }
     if (g_channelUpdatePeriodMs > 0.0)
     {
         // Must happen before the operation band (and therefore the channel model) is
@@ -1411,6 +1465,14 @@ main(int argc, char* argv[])
     {
         g_videoBitrateMbps = 20.0;
         std::cout << "[SCHEME] conventional: 20 Mbps pure video, no SR model flow"
+                  << std::endl;
+    }
+    if (forceVideoBitrate > 0.0)
+    {
+        // Diagnostic only: raise the offered load above the scheme default so the cell can
+        // be driven into saturation.  Does NOT change the paper's parameters.
+        g_videoBitrateMbps = forceVideoBitrate;
+        std::cout << "[FORCE] offered load forced to " << g_videoBitrateMbps << " Mbps/UE"
                   << std::endl;
     }
 
@@ -1515,6 +1577,18 @@ main(int argc, char* argv[])
     {
         schedTypeId = "ns3::NrMacSchedulerOfdmaRR";
     }
+    else if (g_scheduler == "tdma-rr")
+    {
+        schedTypeId = "ns3::NrMacSchedulerTdmaRR";
+    }
+    else if (g_scheduler == "tdma-pf")
+    {
+        schedTypeId = "ns3::NrMacSchedulerTdmaPF";
+    }
+    else if (g_scheduler == "tdma-mr")
+    {
+        schedTypeId = "ns3::NrMacSchedulerTdmaMR";
+    }
     else if (g_scheduler != "tdma-qos")
     {
         NS_ABORT_MSG("unknown --scheduler value: " << g_scheduler);
@@ -1527,8 +1601,17 @@ main(int argc, char* argv[])
                                         UintegerValue(g_pdcchSymbols));
         std::cout << "[PDCCH] DL control symbols = " << g_pdcchSymbols << std::endl;
     }
-    nrHelper->SetSchedulerAttribute("SchedLcAlgorithmType",
-                                    TypeIdValue(NrMacSchedulerLcQos::GetTypeId()));
+    if (g_lc == "rr")
+    {
+        nrHelper->SetSchedulerAttribute(
+            "SchedLcAlgorithmType", TypeIdValue(NrMacSchedulerLcRR::GetTypeId()));
+    }
+    else
+    {
+        nrHelper->SetSchedulerAttribute(
+            "SchedLcAlgorithmType", TypeIdValue(NrMacSchedulerLcQos::GetTypeId()));
+    }
+    std::cout << "[LC] " << g_lc << std::endl;
 
     nrHelper->SetGnbAntennaAttribute("NumRows", UintegerValue(gnbRows));
     nrHelper->SetGnbAntennaAttribute("NumColumns", UintegerValue(gnbCols));
@@ -1910,8 +1993,14 @@ main(int argc, char* argv[])
     uint16_t dlPortVrStart = 1131;
     uint16_t dlPortCgStart = 1141;
 
-    // The bearer that will carry AR traffic
-    EpsBearer arBearer(EpsBearer::NGBR_LOW_LAT_EMBB);
+    // The bearer that will carry AR traffic.  g_videoQci lets a diagnostic run relax the
+    // 10 ms PDB to 300 ms so the PDB contribution to "capacity" can be separated out.
+    const EpsBearer::Qci videoQciEnum =
+        (g_videoQci == 9) ? EpsBearer::NGBR_VIDEO_TCP_DEFAULT : EpsBearer::NGBR_LOW_LAT_EMBB;
+    std::cout << "[QCI] video bearer QCI " << g_videoQci
+              << (g_videoQci == 9 ? " (PDB 300 ms, diagnostic)" : " (PDB 10 ms, paper value)")
+              << std::endl;
+    EpsBearer arBearer(videoQciEnum);
     Ptr<EpcTft> arTft = Create<EpcTft>();
     EpcTft::PacketFilter dlpfAr;
     std::vector<Ptr<EpcTft>> arTfts;
@@ -1935,7 +2024,7 @@ main(int argc, char* argv[])
         }
     }
     // The bearer that will carry VR traffic
-    EpsBearer vrBearer(EpsBearer::NGBR_LOW_LAT_EMBB);
+    EpsBearer vrBearer(videoQciEnum);
 
     Ptr<EpcTft> vrTft = Create<EpcTft>();
     EpcTft::PacketFilter dlpfVr;
@@ -1944,7 +2033,7 @@ main(int argc, char* argv[])
     vrTft->Add(dlpfVr);
 
     // The bearer that will carry CG traffic
-    EpsBearer cgBearer(EpsBearer::NGBR_LOW_LAT_EMBB);
+    EpsBearer cgBearer(videoQciEnum);
 
     Ptr<EpcTft> cgTft = Create<EpcTft>();
     EpcTft::PacketFilter dlpfCg;
