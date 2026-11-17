@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Add the two-stage comparison figure (stage 1 ns-3 vs stage 2 system-level vs paper)."""
 import io
+import os
 
 import matplotlib
 matplotlib.use("Agg")
@@ -14,16 +15,17 @@ s1 = {
     "conv": ([6, 9, 12, 18], [96.83, 39.68, 2.78, 0.00]),
     "rtsr": ([6, 9, 12, 18], [99.21, 99.47, 88.10, 22.49]),
 }
-# stage 2: system-level, 1000 s x 3 seeds, ideal (OFDMA, 399 Mbps)
+# stage 2: system-level, 1000 s x 3 seeds, ideal (OFDMA, 90% capacity ~296 Mbps).
+# Source: sl/results/m6/summary_m6.csv (2026-11-17).
 s2 = {
-    "conv": ([6, 9, 12, 15, 18, 23], [73.8, 69.8, 67.6, 64.2, 57.5, 39.3]),
-    "rtsr": ([6, 9, 12, 15, 18, 23], [80.4, 81.0, 78.8, 78.5, 76.7, 72.0]),
+    "conv": ([6, 9, 12, 15, 18, 23], [92.06, 90.83, 90.87, 89.94, 88.36, 78.12]),
+    "rtsr": ([6, 9, 12, 15, 18, 23], [94.97, 96.82, 95.90, 95.66, 95.50, 93.93]),
 }
 
 fig, ax = plt.subplots(figsize=(9, 6))
 ax.axvspan(0, 17, color="#eef3f8", zorder=0)
-ax.text(11.0, 95, 'paper: both > 90% below 17 UE/cell', color="#5a7fa6",
-        fontsize=10, ha="center")
+ax.text(11.0, 102, 'paper: both > 90% below 17 UE/cell', color="#5a7fa6",
+        fontsize=9.5, ha="center")
 ax.axhline(90, ls="--", c="grey", lw=1)
 
 ax.plot(*s1["conv"], "o--", color="#c0392b", mfc="white", ms=9, lw=1.6,
@@ -31,13 +33,12 @@ ax.plot(*s1["conv"], "o--", color="#c0392b", mfc="white", ms=9, lw=1.6,
 ax.plot(*s1["rtsr"], "s--", color="#2565a8", mfc="white", ms=9, lw=1.6,
         label="Stage 1  ns-3 6 s, TDMA  RTSR")
 ax.plot(*s2["conv"], "o-", color="#c0392b", ms=9, lw=2.4,
-        label="Stage 2  system-level 1000 s, OFDMA (399 Mbps)")
+        label="Stage 2  system-level 1000 s, OFDMA  (90% cap. ~296 Mbps)")
 ax.plot(*s2["rtsr"], "s-", color="#2565a8", ms=9, lw=2.4,
         label="Stage 2  system-level 1000 s, OFDMA  RTSR")
 
-ax.annotate("same mechanism,\ndifferent scheduler capacity", xy=(12, 60), xytext=(13.5, 30),
-            fontsize=10, color="#444",
-            arrowprops=dict(arrowstyle="->", color="#888", lw=1.2))
+ax.text(19.5, 45, "same mechanism,\ndifferent scheduler capacity", fontsize=10,
+        color="#444", ha="center")
 
 ax.set_xlabel("UE per cell", fontsize=11)
 ax.set_ylabel("Satisfied UEs (%)   [per-UE FSR > 99.5%]", fontsize=11)
@@ -50,8 +51,8 @@ fig.tight_layout()
 fig.savefig(OUT, dpi=140)
 print("wrote", OUT)
 
-# ---- embed into docs/07 ----
-P = "/home/penghao/code/EMT-Pytorch-ECCV2022/RTSR/docs/07_阶段二结果.md"
+# ---- embed into the stage-2 doc (the old docs/07 was reorganised into docs/stage2/) ----
+P = "/home/penghao/code/EMT-Pytorch-ECCV2022/RTSR/docs/stage2/02_结果与对照.md"
 BLOCK = """
 ### 两阶段对照图
 
@@ -72,6 +73,9 @@ BLOCK = """
 **这张图就是两阶段工作的全部逻辑**：阶段一定位瓶颈（调度器只用 1/3 频谱），阶段二证明
 把这一层补上后容量到 399、曲线右移、与论文同量级。
 """
+if not os.path.exists(P):
+    print("skip doc embed: %s not found" % P)
+    raise SystemExit(0)
 s = io.open(P, encoding="utf-8").read()
 if "两阶段对照图" not in s:
     io.open(P, "w", encoding="utf-8", newline="\n").write(s.rstrip() + "\n" + BLOCK)
