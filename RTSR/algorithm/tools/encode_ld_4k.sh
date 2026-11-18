@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+# 同 encode_ld.sh，但产出 2160p 的 LD 数据集。
 # Encode the paper's actual setting: 1080p LD at 3-5 Mbps -> 2160p HD.
 set -euo pipefail
 

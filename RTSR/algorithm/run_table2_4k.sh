@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+# 复现论文 Table II 的 2160p 版本：低码率画质，专用模型 vs 通用模型。
 # Paper-aligned Table II: 1080p LD encoded at 3-5 Mbps -> 2160p HD.
 set -euo pipefail
 cd "$(dirname "$0")"

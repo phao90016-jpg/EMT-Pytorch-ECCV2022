@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+# 从原始 4K 素材切出训练/验证用的分片，并生成对应的高/低分辨率配对。
 # Build the 1080p -> 2160p dataset (paper setting) from the 4K source.
 set -euo pipefail
 SRC=/home/penghao/code/dataset_4k/bbb_sunflower_2160p_30fps_normal.mp4

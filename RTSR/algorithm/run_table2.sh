@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# 复现论文 Table II：低码率下的画质，专用模型 vs 通用模型。
+#
+#   bash run_table2.sh
+#   EPOCHS=4 bash run_table2.sh     快速冒烟
 # RTSR Table II: LD bitrate -> quality, specialised model vs a general one.
 #
 #   bash run_table2.sh

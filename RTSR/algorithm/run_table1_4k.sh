@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# 复现论文 Table I 的 2160p 版本：EDSR M1 / M2 / M3，x2 超分。
+# 与 run_table1.sh 的区别只是数据集换成 4K、码率点更高。
 # RTSR Table I at the paper's resolution: 1080p LD -> 2160p HD.
 #
 #   bash run_table1_4k.sh            # M1, M2, M3 (29 epochs each)

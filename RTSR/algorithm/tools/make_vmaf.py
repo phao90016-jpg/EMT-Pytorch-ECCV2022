@@ -6,6 +6,14 @@
         --out vmaf_results_4k.json                               # paper setting
 
 Needs an ffmpeg built with --enable-libvmaf (the system 6.1.1 has none).
+
+【这个脚本做什么】
+对训练好的 Table II 各码率变体计算 VMAF（视频质量指标）。
+
+这是算法侧（阶段零）的工具，与网络仿真无关：它的产出是"模型在什么码率下
+能提供什么画质"，用来论证 RTSR 的"降码率不降质"。
+
+默认跑 540p；加 --pattern / --data-dir / --rates 可跑 2160p 的论文设定。
 """
 
 import argparse

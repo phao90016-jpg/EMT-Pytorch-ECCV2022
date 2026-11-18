@@ -5,6 +5,13 @@ writes to rtsr-flowmon.xml, then reports per-flow and per-class numbers,
 including the share of packets whose delay exceeds a PDB.
 
     python3 analyze_trace.py rtsr-flowmon.xml --pdb-ms 10
+
+【这个脚本做什么】
+解析 ns-3 写出的 FlowMonitor XML（rtsr-flowmon.xml），按流和按类别汇总，
+重点给出"时延超过 PDB 的包占比"。
+
+用途：从网络侧独立核对 FSR——仿真器自己算的 FSR 和这里算的"超时包占比"
+应该互相印证。
 """
 
 import argparse

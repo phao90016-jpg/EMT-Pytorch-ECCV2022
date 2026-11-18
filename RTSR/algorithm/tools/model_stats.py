@@ -5,6 +5,14 @@ Run from anywhere (PyTorch optional -- it is only used as a cross-check):
 
     /home/penghao/code/EMT-Pytorch-ECCV2022/emt-env/bin/python \
         EDSR-PyTorch/tools/model_stats.py
+
+【这个脚本做什么】
+统计 EDSR 各变体（论文 Table I 的 M1 / M2 / M3）的**参数量**与**上线传输大小**。
+
+"上线大小"是 RTSR 的关键参数：模型要作为一个 530 KB / 6 s 的数据流推给终端，
+所以参数量直接决定了 RTSR 方案里模型流占多少带宽。
+
+PyTorch 是可选依赖，只用来交叉验证参数量。
 """
 
 import os

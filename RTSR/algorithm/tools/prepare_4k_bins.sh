@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+# 同 prepare_ld_bins.sh，但针对 2160p 数据集。
 # Reuse the 4K HR pickle cache (built by the first 4K run) in every bitrate variant.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

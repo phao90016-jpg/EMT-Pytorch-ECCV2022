@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+
+# 复现论文 Table I：EDSR 的 M1 / M2 / M3 三个变体，x2 超分，540p -> 1080p。
+#
+#   bash run_table1.sh              跑全部三个变体
+#   bash run_table1.sh m1 m2        只跑指定变体
+#   EPOCHS=2 bash run_table1.sh m1  快速冒烟
 # Reproduce RTSR (WCNC 2023) Table I: EDSR M1 / M2 / M3, x2, 540p -> 1080p.
 #
 #   bash run_table1.sh              # all three variants

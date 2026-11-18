@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# 生成低延迟（LD）配置的参考视频码流：按论文的 LD 配置调 x264/x265 参数，
+# 产出后续训练与评估用的 540p 数据集。
+#
+# LD 配置的关键是"低延迟"——不能用 B 帧，否则解码器要等后续帧。
 # Encode the LD stream at the bitrates used by RTSR Table II (rescaled by pixel count).
 #
 #   bash tools/encode_ld.sh            # all five bitrates

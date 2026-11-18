@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+
+# 补齐 2160p 的 5 Mbps 点：在已有 M2 的基础上补跑 M1 与 M3，
+# 然后对五个码率统一算 VMAF 并汇总。
 # Complete the 5 Mbps point at 2160p: M1 and M3 on top of the existing M2,
 # then compute VMAF for all five bitrates and summarise.
 set -euo pipefail

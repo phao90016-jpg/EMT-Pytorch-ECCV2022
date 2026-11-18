@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+
+# 把 LD 码流按码率点分桶（bins），供 run_table2.sh 逐档训练。
 # Hard-link the shared 1080p HR pickle cache into every LD variant, so that
 # training only has to build the (small) 540p LR cache.
 set -euo pipefail

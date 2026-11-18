@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# 在线训练窗口扫描（论文 Q2：模型更新周期 vs 新鲜度/画质的权衡）。
+#
+#   bash run_dt_sweep.sh             扫描 60 / 180 / 400 帧三个窗口
+#   EPOCHS=4 bash run_dt_sweep.sh    快速冒烟
 # Online-training window sweep (paper Q2: update period vs freshness/quality).
 #
 #   bash run_dt_sweep.sh                 # windows 60 / 180 / 400 frames

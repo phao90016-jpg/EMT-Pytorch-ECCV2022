@@ -16,6 +16,13 @@ assumed  : (a) the conventional (non-RTSR) stream is NOT simulated; it is
 
 Everything is reported both aggregate and per-UE; the per-UE numbers are the ones
 comparable to the paper's 10 Mbps / 20 Mbps per-user framing.
+
+【这个脚本做什么】
+从 ns-3 的 FlowMonitor 输出里算出 RTSR 相对传统方案的**流量节省比例**。
+论文的卖点之一是"省带宽"，这个脚本给出本复现的量化结果。
+
+用法示例（在 RTSR/ 下执行）：
+    python3 calc_traffic_saving.py --ns3-log rtsr_output.txt --duration 60 --ues 3
 """
 
 import argparse
