@@ -179,6 +179,19 @@ static std::set<uint64_t> g_rlcDistinct;
 static uint64_t g_rlcDroppedBytes = 0;
 static std::map<uint32_t, uint64_t> g_rlcDropsPerFrame;
 
+static uint64_t g_pdcpTxPdus = 0;
+static uint64_t g_pdcpTxBytes = 0;
+
+// Counts the PDCP PDUs handed down to RLC.  Comparing this with the application's
+// transmit byte count says whether the loss happens above (PDCP / socket) or below
+// (RLC / MAC) this point.
+static void
+PdcpTxCallback(uint16_t rnti, uint8_t lcid, uint32_t size)
+{
+    ++g_pdcpTxPdus;
+    g_pdcpTxBytes += size;
+}
+
 static void
 RlcDropCallback(std::string context, Ptr<const Packet> p)
 {
@@ -322,6 +335,8 @@ TryConnectRlc()
 }
 
 static uint64_t g_macTbBytes = 0;   // declared early: the RLC sampler reads it
+static uint64_t g_macRawBytes = 0;  // before the duplicate-DCI dedup (diagnostic)
+static uint64_t g_macDupDiffSize = 0;  // duplicate key with a different TB size
 
 // ---- diagnostic: periodic sample of the gNB RLC transmit-buffer occupancy ----
 struct RlcBufSample
@@ -330,6 +345,7 @@ struct RlcBufSample
     uint64_t bytes;
     uint32_t entities;
     uint64_t macBytes;   // cumulative g_macTbBytes at this instant
+    uint64_t sduIn;      // cumulative bytes handed down by PDCP
 };
 static std::vector<RlcBufSample> g_rlcBufSamples;
 
@@ -340,16 +356,23 @@ SampleRlcBuffer()
         "/NodeList/*/DeviceList/*/LteEnbRrc/UeMap/*/DataRadioBearerMap/*/LteRlc");
     uint64_t total = 0;
     uint32_t n = 0;
+    uint64_t sduIn = 0;
+    uint64_t sduCnt = 0;
     for (uint32_t i = 0; i < mc.GetN(); ++i)
     {
         Ptr<LteRlcUm> rlc = DynamicCast<LteRlcUm>(mc.Get(i));
         if (rlc)
         {
             total += rlc->GetTxBufferSize();
+            sduIn += rlc->GetSduInBytes();
+            sduCnt += rlc->GetSduInCount();
             ++n;
         }
     }
-    g_rlcBufSamples.push_back({Simulator::Now().GetMilliSeconds(), total, n, g_macTbBytes});
+    g_pdcpTxBytes = sduIn;   // reuse the counters for the PDCP->RLC boundary
+    g_pdcpTxPdus = sduCnt;
+    g_rlcBufSamples.push_back(
+        {Simulator::Now().GetMilliSeconds(), total, n, g_macTbBytes, sduIn});
     Simulator::Schedule(MilliSeconds(100), &SampleRlcBuffer);
 }
 
@@ -395,7 +418,7 @@ static uint64_t g_wbSinrCount = 0;
 static std::map<int, std::pair<double, uint64_t>> g_wbSinrBuckets; // 1 s buckets
 // Same idea on the MAC side: one UE gets at most one DL TB per slot, so
 // (cell, frame, slot, rnti) identifies a TB and reveals duplicated DCI traces.
-static std::set<uint64_t> g_macTbKeys;
+static std::map<uint64_t, uint32_t> g_macTbKeys;
 static uint64_t g_macDuplicateEvents = 0;
 
 static void
@@ -416,11 +439,21 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
                                (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
                                (static_cast<uint64_t>(info.m_slotNum & 0xff) << 24) |
                                (static_cast<uint64_t>(info.m_symStart) << 16) | info.m_rnti;
-        if (!g_macTbKeys.insert(tbKey).second)
+        g_macRawBytes += info.m_tbSize;
+        auto it = g_macTbKeys.find(tbKey);
+        if (it != g_macTbKeys.end())
         {
             ++g_macDuplicateEvents;
+            // If the same (cell, frame, slot, symStart, rnti) shows up with a *different*
+            // TB size, these are two distinct TBs that the key cannot tell apart, and the
+            // dedup is dropping real traffic rather than removing a duplicated trace.
+            if (it->second != info.m_tbSize)
+            {
+                ++g_macDupDiffSize;
+            }
             return;
         }
+        g_macTbKeys.emplace(tbKey, info.m_tbSize);
         ++g_macTbs;
         g_macTbBytes += info.m_tbSize;
         // count retransmissions separately through the RV field
@@ -548,14 +581,19 @@ DumpMacPhy(bool announce)
     mac << "metric,value\n";
     {
         std::ofstream buf("rlc_buffer.csv");
-        buf << "time_ms,buffer_bytes,entities,mac_bytes_cum\n";
+        buf << "time_ms,buffer_bytes,entities,mac_bytes_cum,sdu_in_cum\n";
         for (const auto& s : g_rlcBufSamples)
         {
-            buf << s.ms << "," << s.bytes << "," << s.entities << "," << s.macBytes << "\n";
+            buf << s.ms << "," << s.bytes << "," << s.entities << "," << s.macBytes << ","
+                << s.sduIn << "\n";
         }
     }
+    mac << "pdcp_tx_pdus," << g_pdcpTxPdus << "\n";
+    mac << "pdcp_tx_bytes," << g_pdcpTxBytes << "\n";
     mac << "scheduled_tbs," << g_macTbs << "\n";
     mac << "scheduled_bytes," << g_macTbBytes << "\n";
+    mac << "scheduled_bytes_raw," << g_macRawBytes << "\n";
+    mac << "duplicate_key_diff_size," << g_macDupDiffSize << "\n";
     mac << "retransmissions," << g_macRetx << "\n";
     mac << "measured_cells," << g_centerCellIds.size() << "\n";
 
