@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""M6 wrap-up: aggregate the 36 runs, plot Fig.5, move results into the repo."""
+"""M6 收尾：把 36 条 run 聚合成 summary_m6.csv，并画 Fig.5。
+
+这是 M6 跑完之后唯一需要手工执行的脚本（见 docs/stage3/02_实验计划.md 的 P5 一节）。
+
+做三件事：
+    1. 收集结果（顺带兼容 2026-11 那次路径 bug 留下的旧目录）
+    2. 按 (UE 数, 方案) 分组求均值/标准差 -> summary_m6.csv
+    3. 画双面板图：左图满意率（论文 Fig.5）、右图承载吞吐
+
+注意：本脚本会**覆盖** docs/figs/m6_fig5.png —— 那是阶段二的旧图，覆盖是预期的。
+"""
 import csv
 import glob
 import io
@@ -10,14 +20,14 @@ import shutil
 import numpy as np
 
 REPO = "/home/penghao/code/EMT-Pytorch-ECCV2022"
-DST = REPO + "/RTSR/sl/results/m6"         # canonical location (run_m6.sh writes here)
-LEGACY = REPO + "/sl/results/m6"           # where the old buggy runner wrote
+DST = REPO + "/RTSR/sl/results/m6"         # 规范位置（run_m6.sh 直接写这里）
+LEGACY = REPO + "/sl/results/m6"           # 旧版 runner 因路径 bug 写到的位置
 FIG = REPO + "/RTSR/docs/figs"
 
-# ---------------------------------------------------------------- 1. collect results
-# The 2026-11 runner writes straight into DST.  Older runs landed in LEGACY because of a
-# missing RTSR/ prefix; copy those over only when the directory really is different,
-# otherwise shutil.copy would try to copy a file onto itself (SameFileError).
+# ---------------------------------------------------------------- 1. 收集结果
+# 2026-11 之后的 runner 直接写进 DST。更早的那次因为少了 RTSR/ 前缀落到了 LEGACY。
+# 只有两个目录**确实不同**时才去拷贝，否则 shutil.copy 会试图把文件拷给自己
+# （SameFileError）。
 os.makedirs(DST, exist_ok=True)
 if os.path.isdir(LEGACY) and os.path.realpath(LEGACY) != os.path.realpath(DST):
     for f in glob.glob(os.path.join(LEGACY, "*.csv")):
@@ -28,10 +38,13 @@ if os.path.isdir(LEGACY) and os.path.realpath(LEGACY) != os.path.realpath(DST):
             shutil.copy(f, os.path.join(DST, "logs"))
     print(f"merged legacy results from {LEGACY}")
 print(f"found {len(glob.glob(os.path.join(DST, '*.csv')))} csv files in {DST}")
-
 # ---------------------------------------------------------------- 2. aggregate
 rows = []
 for f in glob.glob(os.path.join(DST, "*.csv")):
+    # 必须排除上一次自己生成的 summary_m6.csv，否则脚本不幂等：
+    # 第二次运行时会把汇总表当成原始数据读进来，因缺 satisfied_pct 列而报 KeyError。
+    if os.path.basename(f) == "summary_m6.csv":
+        continue
     with io.open(f, encoding="utf-8") as fh:
         rows += [r for r in csv.DictReader(fh)]
 
