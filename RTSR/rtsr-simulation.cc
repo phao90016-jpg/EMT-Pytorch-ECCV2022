@@ -337,6 +337,10 @@ TryConnectRlc()
 static uint64_t g_macTbBytes = 0;   // declared early: the RLC sampler reads it
 static uint64_t g_macRawBytes = 0;  // before the duplicate-DCI dedup (diagnostic)
 static uint64_t g_macDupDiffSize = 0;  // duplicate key with a different TB size
+// MCS 直方图：用来判断链路自适应还有没有提升空间。
+// 若绝大多数 TB 已经落在最高 MCS（256QAM，索引 28），说明 MCS 已经顶格，
+// 外环链路自适应（OLLA）再聪明也没有余量可挖。
+static std::map<uint8_t, uint64_t> g_macMcsHist;
 
 // ---- diagnostic: periodic sample of the gNB RLC transmit-buffer occupancy ----
 struct RlcBufSample
@@ -454,6 +458,7 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
             return;
         }
         ++g_macTbs;
+        ++g_macMcsHist[info.m_mcs];
         g_macTbBytes += info.m_tbSize;
         // count retransmissions separately through the RV field
         if (info.m_rv != 0)
@@ -596,6 +601,14 @@ DumpMacPhy(bool announce)
     mac << "scheduled_bytes," << g_macTbBytes << "\n";
     mac << "scheduled_bytes_raw," << g_macRawBytes << "\n";
     mac << "duplicate_key_diff_size," << g_macDupDiffSize << "\n";
+    {
+        std::ofstream mcs("mcs_hist.csv");
+        mcs << "mcs,tbs\n";
+        for (const auto& kv : g_macMcsHist)
+        {
+            mcs << static_cast<uint16_t>(kv.first) << "," << kv.second << "\n";
+        }
+    }
     mac << "retransmissions," << g_macRetx << "\n";
     mac << "measured_cells," << g_centerCellIds.size() << "\n";
 
