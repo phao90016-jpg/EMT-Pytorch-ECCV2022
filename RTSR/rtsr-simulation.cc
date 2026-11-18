@@ -321,12 +321,15 @@ TryConnectRlc()
     }
 }
 
+static uint64_t g_macTbBytes = 0;   // declared early: the RLC sampler reads it
+
 // ---- diagnostic: periodic sample of the gNB RLC transmit-buffer occupancy ----
 struct RlcBufSample
 {
     double ms;
     uint64_t bytes;
     uint32_t entities;
+    uint64_t macBytes;   // cumulative g_macTbBytes at this instant
 };
 static std::vector<RlcBufSample> g_rlcBufSamples;
 
@@ -346,7 +349,7 @@ SampleRlcBuffer()
             ++n;
         }
     }
-    g_rlcBufSamples.push_back({Simulator::Now().GetMilliSeconds(), total, n});
+    g_rlcBufSamples.push_back({Simulator::Now().GetMilliSeconds(), total, n, g_macTbBytes});
     Simulator::Schedule(MilliSeconds(100), &SampleRlcBuffer);
 }
 
@@ -356,7 +359,6 @@ static uint64_t g_macAllEvents = 0;  // every DlScheduling callback, before filt
 static uint64_t g_macTbSizeZero = 0; // dropped: tbSize == 0
 static uint64_t g_macStreamGt0 = 0;  // dropped: streamId > 0
 static uint64_t g_macRetx = 0;
-static uint64_t g_macTbBytes = 0;
 static uint64_t g_phyTbs = 0;
 static uint64_t g_phyCorrupt = 0;
 static uint64_t g_phyBytes = 0;
@@ -546,10 +548,10 @@ DumpMacPhy(bool announce)
     mac << "metric,value\n";
     {
         std::ofstream buf("rlc_buffer.csv");
-        buf << "time_ms,buffer_bytes,entities\n";
+        buf << "time_ms,buffer_bytes,entities,mac_bytes_cum\n";
         for (const auto& s : g_rlcBufSamples)
         {
-            buf << s.ms << "," << s.bytes << "," << s.entities << "\n";
+            buf << s.ms << "," << s.bytes << "," << s.entities << "," << s.macBytes << "\n";
         }
     }
     mac << "scheduled_tbs," << g_macTbs << "\n";
