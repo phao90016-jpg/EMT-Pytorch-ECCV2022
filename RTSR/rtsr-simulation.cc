@@ -153,6 +153,14 @@ static bool g_pdcpDiscard = true;
 // same fixed beam.  Diagnostic: with a fixed beam, OFDMA no longer suffers the
 // per-symbol beam mismatch that makes it unusable with per-UE steering.
 static std::string g_bfMode = "ideal";
+// MIMO rank mode.  ns-3 defaults are UseFixedRi=true + FixedRankIndicator=1, i.e. the
+// simulation runs single-stream unless told otherwise.  "adaptive" enables the SINR-driven
+// RI selection (NrUePhy::SelectRi, thresholds RiSinrThreshold1/2 = 10 dB).
+static std::string g_rankMode = "fixed1";
+// Number of UE antenna panels.  In this 5G-LENA version InstallUeDevice() passes this
+// straight through as the number of streams, so panels > 1 is what makes rank 2 possible
+// (NrUePhy forces RI = 1 whenever there is only one NrSpectrumPhy).
+static uint8_t g_uePanels = 1;
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -1280,6 +1288,8 @@ main(int argc, char* argv[])
     uint32_t rlcDiscardMs = 0;
     bool pdcpDiscard = true;
     std::string bfMode = "ideal";
+    std::string rankMode = "fixed1";
+    uint32_t uePanels = 1;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1377,6 +1387,12 @@ main(int argc, char* argv[])
     cmd.AddValue("lc",
                  "LC algorithm that sizes the grants: qos (default) | rr",
                  lc);
+    cmd.AddValue("uePanels",
+                 "Number of UE antenna panels (= streams in this 5G-LENA version); 1 = SISO",
+                 uePanels);
+    cmd.AddValue("rankMode",
+                 "MIMO rank: fixed1 (ns-3 default) | fixed2 | adaptive (SINR-driven RI)",
+                 rankMode);
     cmd.AddValue("bfMode",
                  "Beamforming: ideal (per-UE steering, default) | none (single fixed beam)",
                  bfMode);
@@ -1427,6 +1443,8 @@ main(int argc, char* argv[])
     g_rlcDiscardMs = rlcDiscardMs;
     g_pdcpDiscard = pdcpDiscard;
     g_bfMode = bfMode;
+    g_rankMode = rankMode;
+    g_uePanels = static_cast<uint8_t>(uePanels);
     if (!g_pdcpDiscard)
     {
         Config::SetDefault("ns3::LteRlcUm::EnablePdcpDiscarding", BooleanValue(false));
@@ -1560,6 +1578,21 @@ main(int argc, char* argv[])
         const std::string pattern = ConvertTddPattern(g_tddPattern);
         nrHelper->SetGnbPhyAttribute("Pattern", StringValue(pattern));
         std::cout << "[TDD] helper pattern = " << pattern << std::endl;
+    }
+    if (g_rankMode == "adaptive")
+    {
+        nrHelper->SetUePhyAttribute("UseFixedRi", BooleanValue(false));
+        std::cout << "[MIMO] adaptive RI (thresholds 10 dB)" << std::endl;
+    }
+    else if (g_rankMode == "fixed2")
+    {
+        nrHelper->SetUePhyAttribute("UseFixedRi", BooleanValue(true));
+        nrHelper->SetUePhyAttribute("FixedRankIndicator", UintegerValue(2));
+        std::cout << "[MIMO] fixed rank 2" << std::endl;
+    }
+    else
+    {
+        std::cout << "[MIMO] fixed rank 1 (ns-3 default)" << std::endl;
     }
     nrHelper->SetUePhyAttribute("TxPower", DoubleValue(23));
     nrHelper->SetUePhyAttribute("NoiseFigure", DoubleValue(nfUe));
@@ -1881,11 +1914,11 @@ main(int argc, char* argv[])
         g_indoorUeCount = ueIndoorContainer.GetN();
         nrHelper->SetUeAntennaAttribute("AntennaElement",
                                         PointerValue(CreateObject<IsotropicAntennaModel>()));
-        NetDeviceContainer outDev = nrHelper->InstallUeDevice(ueOutdoorContainer, allBwps);
+        NetDeviceContainer outDev = nrHelper->InstallUeDevice(ueOutdoorContainer, allBwps, g_uePanels);
         Ptr<FixedGainAntenna> indoorAntenna = CreateObject<FixedGainAntenna>();
         indoorAntenna->SetAttribute("GainDb", DoubleValue(-indoorPenaltyDb));
         nrHelper->SetUeAntennaAttribute("AntennaElement", PointerValue(indoorAntenna));
-        NetDeviceContainer inDev = nrHelper->InstallUeDevice(ueIndoorContainer, allBwps);
+        NetDeviceContainer inDev = nrHelper->InstallUeDevice(ueIndoorContainer, allBwps, g_uePanels);
         // Reassemble in the original UE order: everything downstream (IP assignment,
         // attach, applications) indexes ueArNetDev by the UE index.
         uint32_t outIdx = 0;
@@ -1907,10 +1940,10 @@ main(int argc, char* argv[])
     }
     else
     {
-        ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps);
+        ueArNetDev = nrHelper->InstallUeDevice(ueArContainer, allBwps, g_uePanels);
     }
-    NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps);
-    NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps);
+    NetDeviceContainer ueVrNetDev = nrHelper->InstallUeDevice(ueVrContainer, allBwps, g_uePanels);
+    NetDeviceContainer ueCgNetDev = nrHelper->InstallUeDevice(ueCgContainer, allBwps, g_uePanels);
 
     int64_t randomStream = 1;
     randomStream += nrHelper->AssignStreams(gNbNetDev, randomStream);
