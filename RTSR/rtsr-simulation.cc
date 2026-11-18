@@ -1587,6 +1587,10 @@ main(int argc, char* argv[])
     {
         schedTypeId = "ns3::NrMacSchedulerOfdmaRR";
     }
+    else if (g_scheduler == "ofdma-mr")
+    {
+        schedTypeId = "ns3::NrMacSchedulerOfdmaMR";
+    }
     else if (g_scheduler == "tdma-rr")
     {
         schedTypeId = "ns3::NrMacSchedulerTdmaRR";
