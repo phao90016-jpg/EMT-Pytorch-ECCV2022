@@ -4,6 +4,13 @@
 
 Paper targets: both schemes >90% below 17 UE/cell, conventional collapses after 18,
 RTSR holds to ~23.
+
+【这个脚本做什么】
+校验 M5 里程碑：切到理想档（OFDMA + 理想波束 + 3GPP 曲线 + O2I），看拐点落在哪。
+
+论文目标：17 UE/cell 以下两方案都 >90%，传统在 18 之后崩，RTSR 撑到约 23。
+
+这个脚本是"理想档能不能到论文量级"的验收工具，M6 的正式结果就是它的全量版本。
 """
 import sys
 

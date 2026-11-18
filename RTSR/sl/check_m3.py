@@ -10,6 +10,17 @@ Tolerance +/- 12 pp: the link abstraction and the scheduler fairness are approxi
 What must come out right is the shape - conventional collapses between 6 and 12 while
 RTSR stays high - and the satisfied ratio is computed exactly like the paper (per-UE
 FSR > 99.5%).
+
+【这个脚本做什么】
+校验 M3 里程碑：能否复现 ns-3 阶段 6 / 12 UE/cell 的满意率。
+
+ns-3 参照值（6 s，TDMA，B1 修复后）：
+   6 UE/cell：传统 96.83%，RTSR 99.21%
+  12 UE/cell：传统  2.78%，RTSR 88.10%
+  18 UE/cell：传统  0.00%
+
+这个脚本用的是**保守档**（贴近 ns-3 的能力），所以它的数字应当和 ns-3 接近；
+而 M6 用的是理想档，两者不可混比。
 """
 import sys
 

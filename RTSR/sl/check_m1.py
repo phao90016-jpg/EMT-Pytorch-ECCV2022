@@ -8,6 +8,16 @@ ns-3 reference points (paperTable3, 1 UE/cell):
                                           so it is NOT comparable and is reported for
                                           information only.
 Paper: "average SINR 20-30 dB" at full load (26 UE/cell).
+
+【这个脚本做什么】
+校验 M1 里程碑：系统级仿真器给出的 SINR 分布是否与 ns-3 一致。
+
+三个对照点（都来自 ns-3 的 paperTable3 配置）：
+  B1  19 站 / 57 小区，中心 21 个：平均 SINR 47.7 dB —— **与这里的撒点规则相同，可比**
+  B0  1 站 / 3 小区：69.2 dB，但它的终端离天线只有约 1 米，**不可比**，只作参考
+  另外还对照论文正文给的 20-30 dB 区间（高载场景）
+
+判定：只要 B1 对得上（约 47.7 dB），就说明信道模型（路损/阴影/穿透/波束）没问题。
 """
 import sys
 

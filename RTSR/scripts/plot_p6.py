@@ -6,6 +6,13 @@ Reads results/p6/summary2.csv.  NOTE: the csv stores the total number of UEs, so
 x axis is ues / CELLS.  Labels are in English because this image has no CJK fonts.
 
 Usage:  emt-env/bin/python RTSR/scripts/plot_p6.py
+
+【这个脚本做什么】
+把 ns-3 阶段 8 个点的结果画成 Fig.5 / Fig.6 对照图（传统 vs RTSR），
+并叠加论文的参照线。
+
+数据源是 RTSR/results/p6/ 下的各点目录。图里的 18 点 RTSR 标签有专门的偏移处理
+（否则会和传统方案的点重叠），见脚本里的 offset 逻辑。
 """
 import csv
 import os

@@ -4,6 +4,15 @@
 Targets (README section 3, after the TDD DL factor is applied):
   conservative : ~190 Mbps/cell  (ns-3 measured 191 Mbps at 12 UE/cell)
   ideal        : 300-420 Mbps/cell (paper implies ~350)
+
+【这个脚本做什么】
+校验 M2 里程碑：所有终端永远有数据（backlogged）时，一个小区能承载多少。
+
+两个档位的目标（已含 TDD 下行占比折算）：
+  保守档：约 190 Mbps/cell（ns-3 在 12 UE/cell 实测 191）
+  理想档：300-420 Mbps/cell（论文隐含约 350）
+
+注意：这是"硬容量"口径（永远有数据），和论文 Fig.5 的"90% 满意容量"不是一回事。
 """
 import sys
 

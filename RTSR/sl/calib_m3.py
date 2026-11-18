@@ -2,6 +2,15 @@
 """Fit the one calibrated constant of the traffic model, PDB_BACKLOG_BYTES.
 
 Targets (ns-3, B1-fixed): 6-conv 96.8%, 12-conv 2.8%, 12-rtsr 88.1%, carried@12 191 Mbps.
+
+【这个脚本做什么】
+标定业务模型里唯一的自由常数 PDB_BACKLOG_BYTES（队列里"算作还有数据"的字节门限）。
+
+标定目标（ns-3，B1 修复后）：6-传统 96.8%、12-传统 2.8%、12-RTSR 88.1%、
+12 点的承载 191 Mbps。
+
+注意：这个常数是在**保守档**下标定的；理想档（M6）用的是帧级 PDB 语义，
+不再依赖它。
 """
 import sys
 

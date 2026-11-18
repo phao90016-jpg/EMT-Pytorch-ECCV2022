@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Step 2: per-UE FSR distribution from the ns-3 frame_stats files (one row per frame)."""
+"""Step 2: per-UE FSR distribution from the ns-3 frame_stats files (one row per frame).
+【这个脚本做什么】
+从 ns-3 阶段产出的 frame_stats 文件（每帧一行）里，还原**每 UE 的 FSR 分布**。
+
+用途：判断 FSR 的损失是"少数 UE 全丢"还是"所有 UE 均匀丢一点"。
+前者说明有 SINR 低尾，后者说明是全局资源不足——这两种情况的修法完全不同。
+"""
 import glob
 import io
 import os

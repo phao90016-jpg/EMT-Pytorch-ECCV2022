@@ -10,6 +10,14 @@ Inputs (all written by the simulation):
 
 Prints one CSV line:
   run,ues,frames,satisfied,satisfied_pct,mean_fsr_paper,mean_fsr_e2e,dropped_frames
+
+【这个脚本做什么】
+把 ns-3 阶段（P6）跑出来的 8 个点聚合成表：每点统计承载吞吐、BLER、平均 SINR，
+并与文档里记录的参照值对照。阶段一的容量数字（191 Mbps 等）就是从这里出来的。
+
+⚠️ 注意：这里的"承载吞吐"用的是 MAC 的 scheduled_bytes，而该计数器存在去重键
+碰撞导致少算 20-35% 的问题（2026-11-18 已修代码，但历史数据未重算）。
+引用这些数字前请先看 docs/stage1/06_ns3容量探查.md 第 28 节。
 """
 import csv
 import glob

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# 查看 ns-3 阶段一各点的运行状态（哪些跑完了、哪些还在跑、各自进度）。
+#
+# 判据：某点目录下是否已经生成了 phy_tb.csv（那是最后写的文件）。
 # P6 status overview - one command to see everything that is running or finished.
 #
 #   bash RTSR/scripts/p6_status.sh

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# ns-3 阶段一的并行批跑脚本。
+#
+# 与 p6_run.sh 的区别：这个按 manifest 文件并行跑多个点，用 nproc 控制并发度。
+# 单个点 6 s 的墙钟从 3.9 h（6 UE）到 17.6 h（18 UE）不等，所以必须并行。
+#
+# manifest 文件（p6_manifest*.txt）每行一个 "--ue N --scheme X" 的参数组合。
 # P6 parallel sweep runner.
 #
 # Same contract as p6_run.sh (idempotent: a run with a DONE marker is skipped), but runs
