@@ -7,6 +7,7 @@
 #include "ns3/boolean.h"
 #include "ns3/config-store-module.h"
 #include "ns3/config-store.h"
+#include "ns3/lte-rlc-um.h"
 #include "ns3/core-module.h"
 #include "ns3/flow-monitor-module.h"
 #include "ns3/internet-apps-module.h"
@@ -320,6 +321,35 @@ TryConnectRlc()
     }
 }
 
+// ---- diagnostic: periodic sample of the gNB RLC transmit-buffer occupancy ----
+struct RlcBufSample
+{
+    double ms;
+    uint64_t bytes;
+    uint32_t entities;
+};
+static std::vector<RlcBufSample> g_rlcBufSamples;
+
+static void
+SampleRlcBuffer()
+{
+    Config::MatchContainer mc = Config::LookupMatches(
+        "/NodeList/*/DeviceList/*/LteEnbRrc/UeMap/*/DataRadioBearerMap/*/LteRlc");
+    uint64_t total = 0;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < mc.GetN(); ++i)
+    {
+        Ptr<LteRlcUm> rlc = DynamicCast<LteRlcUm>(mc.Get(i));
+        if (rlc)
+        {
+            total += rlc->GetTxBufferSize();
+            ++n;
+        }
+    }
+    g_rlcBufSamples.push_back({Simulator::Now().GetMilliSeconds(), total, n});
+    Simulator::Schedule(MilliSeconds(100), &SampleRlcBuffer);
+}
+
 // ---- P0.4 / P0.5: MAC TB scheduling and PHY TB reception ----
 static uint64_t g_macTbs = 0;
 static uint64_t g_macAllEvents = 0;  // every DlScheduling callback, before filtering
@@ -514,6 +544,14 @@ DumpMacPhy(bool announce)
 {
     std::ofstream mac("mac_tb.csv");
     mac << "metric,value\n";
+    {
+        std::ofstream buf("rlc_buffer.csv");
+        buf << "time_ms,buffer_bytes,entities\n";
+        for (const auto& s : g_rlcBufSamples)
+        {
+            buf << s.ms << "," << s.bytes << "," << s.entities << "\n";
+        }
+    }
     mac << "scheduled_tbs," << g_macTbs << "\n";
     mac << "scheduled_bytes," << g_macTbBytes << "\n";
     mac << "retransmissions," << g_macRetx << "\n";
@@ -1366,6 +1404,10 @@ main(int argc, char* argv[])
                  "penetration loss; 0 disables the split.",
                  indoorRatio);
     cmd.AddValue("indoorPenaltyDb", "Penetration loss for indoor UEs in dB", indoorPenaltyDb);
+    cmd.AddValue("appStartTimeMs",
+                 "Application start time in ms (default 400; must leave room for the "
+                 "warm-up plus the measurement window inside simTimeMs)",
+                 appStartTimeMs);
     cmd.AddValue("warmupMs",
                  "Exclude the first N ms from the frame statistics (warm-up: attach and "
                  "RRC setup); the traffic itself starts earlier (P6)",
@@ -2261,6 +2303,7 @@ main(int argc, char* argv[])
         // so retry the wildcard connection until it succeeds (first success wins).
         Simulator::Schedule(MilliSeconds(0), &ApplyTddPattern);
         Simulator::Schedule(MilliSeconds(300), &TryConnectRlc);
+        Simulator::Schedule(MilliSeconds(300), &SampleRlcBuffer);
         Simulator::Schedule(MilliSeconds(300), &TryConnectMacPhy);
     }
 
