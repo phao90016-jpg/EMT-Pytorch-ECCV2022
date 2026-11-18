@@ -390,7 +390,8 @@ static uint32_t g_sinrCount = 0;
 // RxPacketTraceUe is emitted once per MAC PDU in the received burst, not once per
 // TB, so the same TB would be counted several times (1.3x at high load).  One UE
 // receives at most one TB per slot, hence the (frame, slot, rnti) key.
-static std::set<uint64_t> g_phyTbKeys;
+// 同 MAC 侧：PHY 的去重键也必须带上 TB 大小，否则同样会误杀真 TB。
+static std::set<std::pair<uint64_t, uint32_t>> g_phyTbKeys;
 
 // Per-UE PHY statistics: the network-wide mean hides whether the interference is
 // actually felt by some UEs, so keep a per-RNTI breakdown as well.
@@ -418,7 +419,9 @@ static uint64_t g_wbSinrCount = 0;
 static std::map<int, std::pair<double, uint64_t>> g_wbSinrBuckets; // 1 s buckets
 // Same idea on the MAC side: one UE gets at most one DL TB per slot, so
 // (cell, frame, slot, rnti) identifies a TB and reveals duplicated DCI traces.
-static std::map<uint64_t, uint32_t> g_macTbKeys;
+// 去重键 = (槽位复合键, TB 字节数)。把 TB 大小也并入键，才能区分
+// "同一 (cell, frame, slot, symStart, rnti) 但大小不同"的两个真 TB。
+static std::set<std::pair<uint64_t, uint32_t>> g_macTbKeys;
 static uint64_t g_macDuplicateEvents = 0;
 
 static void
@@ -435,25 +438,21 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
     }
     if (info.m_tbSize && info.m_streamId <= 0)
     {
-        const uint64_t tbKey = (static_cast<uint64_t>(cellId) << 48) |
-                               (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
-                               (static_cast<uint64_t>(info.m_slotNum & 0xff) << 24) |
-                               (static_cast<uint64_t>(info.m_symStart) << 16) | info.m_rnti;
+        // 槽位复合键：(cell, frame, slot, symStart, rnti)。
+        // 单独用它去重是不够的 —— 实测有 2,639 个 TB 与已记录的键相同但大小不同，
+        // 它们是两个被挤进同一槽位的真 TB，不是重复的 trace。所以下面把 tbSize 也并入键。
+        const uint64_t slotKey = (static_cast<uint64_t>(cellId) << 48) |
+                                 (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
+                                 (static_cast<uint64_t>(info.m_slotNum & 0xff) << 24) |
+                                 (static_cast<uint64_t>(info.m_symStart) << 16) | info.m_rnti;
+        const std::pair<uint64_t, uint32_t> tbKey{slotKey, info.m_tbSize};
         g_macRawBytes += info.m_tbSize;
-        auto it = g_macTbKeys.find(tbKey);
-        if (it != g_macTbKeys.end())
+        if (!g_macTbKeys.insert(tbKey).second)
         {
+            // 真正的重复 trace：槽位与大小都相同，说明同一条 TB 被上报了两次。
             ++g_macDuplicateEvents;
-            // If the same (cell, frame, slot, symStart, rnti) shows up with a *different*
-            // TB size, these are two distinct TBs that the key cannot tell apart, and the
-            // dedup is dropping real traffic rather than removing a duplicated trace.
-            if (it->second != info.m_tbSize)
-            {
-                ++g_macDupDiffSize;
-            }
             return;
         }
-        g_macTbKeys.emplace(tbKey, info.m_tbSize);
         ++g_macTbs;
         g_macTbBytes += info.m_tbSize;
         // count retransmissions separately through the RV field
@@ -520,12 +519,15 @@ OnDlDataSinr(uint16_t cellId, uint16_t rnti, double sinrLinear, uint16_t bwpId, 
 static void
 OnRxPacketTraceUe(RxPacketTraceParams params)
 {
-    // (cell, frame, slot, symbol, rnti): one TB per allocation, and a UE may get
-    // more than one allocation in the same slot.
-    const uint64_t tbKey = (static_cast<uint64_t>(params.m_cellId) << 48) |
-                           (static_cast<uint64_t>(params.m_frameNum & 0xffff) << 32) |
-                           (static_cast<uint64_t>(params.m_slotNum & 0xff) << 24) |
-                           (static_cast<uint64_t>(params.m_symStart) << 16) | params.m_rnti;
+    // 槽位复合键：(cell, frame, slot, symStart, rnti)。
+    // RxPacketTraceUe 是"每个 MAC PDU 触发一次"而不是"每个 TB 一次"，所以同一个 TB 的
+    // 多个 PDU 会重复上报，必须去重；但只按槽位去重会把"同槽位不同大小"的两个真 TB 误杀，
+    // 因此键里再加上 TB 字节数。
+    const uint64_t slotKey = (static_cast<uint64_t>(params.m_cellId) << 48) |
+                             (static_cast<uint64_t>(params.m_frameNum & 0xffff) << 32) |
+                             (static_cast<uint64_t>(params.m_slotNum & 0xff) << 24) |
+                             (static_cast<uint64_t>(params.m_symStart) << 16) | params.m_rnti;
+    const std::pair<uint64_t, uint32_t> tbKey{slotKey, params.m_tbSize};
     if (g_statsRings >= 0 &&
         g_centerCellIds.find(static_cast<uint16_t>(params.m_cellId)) == g_centerCellIds.end())
     {
