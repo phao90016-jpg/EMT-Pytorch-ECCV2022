@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Add the two-stage comparison figure (stage 1 ns-3 vs stage 2 system-level vs paper)."""
+"""画两阶段对照图：阶段一（ns-3）vs 阶段二（系统级）vs 论文。
+
+这张图是整个两阶段工作的核心论据：
+  - 虚线 = 阶段一（ns-3，6 s，TDMA，容量约 191 Mbps），只有 4 个点
+  - 实线 = 阶段二（系统级，1000 s x 3 种子，OFDMA，90% 满意容量约 296 Mbps），6 个点
+  - 灰底 = 论文声称"两个方案都 >90%"的区间（<17 UE/cell）
+
+**形状一致、拐点随容量右移** —— 这就是"阶段一定位瓶颈、阶段二补上瓶颈"的定量证据。
+
+阶段二的数据来自 sl/results/m6/summary_m6.csv（2026-11-17）。改数据时只改 s2 那两行，
+不要动画图逻辑。
+"""
 import io
 import os
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Stage-3 Fig.5 / Fig.6 from the 60 s quick-validation sweep (57 cells, icic 16 dB).
+"""从 60 s 快速验证数据画阶段三的 Fig.5 / Fig.6（57 小区，icic 16 dB）。
 
-Input : RTSR/sl/results/quick_icic16.csv   (ue,scheme,satisfied_pct,mean_fsr_pct)
-Output: RTSR/docs/figs/stage3_quick.png
+输入：RTSR/sl/results/quick_icic16.csv   (ue,scheme,satisfied_pct,mean_fsr_pct)
+输出：RTSR/docs/figs/stage3_quick.png
 
-The 1000 s x 3-seed M6 dataset supersedes this for the formal claim; this figure exists so
-the stage-3 conclusions can be shown before M6 finishes (and to keep the old, now invalid
-m6_fig5.png from being read as current).
+**注意这张图已被 M6 的正式数据取代**（1000 s x 3 种子，36 条 run，见 m6_fig5.png）。
+保留它的原因：① 在 M6 完成之前用它展示过结论；② 避免旧的、已经失效的
+m6_fig5.png 被误当成当前结果。正式结论一律以 m6_fig5.png 为准。
 """
 import csv
 import io

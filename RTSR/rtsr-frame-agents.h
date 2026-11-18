@@ -1,10 +1,22 @@
-// RTSR frame-level instrumentation.
+// RTSR 帧级测量：应用层收发两端 + 帧头格式。
 //
-// Why an in-payload frame header instead of a PacketTag: ns-3's RLC concatenates
-// several SDUs into one PDU, and a tag attached to an SDU does not survive that
-// concatenation (eight consecutive packets were observed carrying the same tag).
-// Carrying the frame identity in the first 20 payload bytes is immune to
-// fragmentation/concatenation and behaves like a real application framing.
+// ============================================================================
+// 为什么把帧标识写在**载荷头部**而不是用 ns-3 的 PacketTag
+// ============================================================================
+// ns-3 的 RLC 会把多个 SDU 拼进一个 PDU，挂在 SDU 上的 PacketTag 撑不过这个拼接过程
+// （实测出现过连续 8 个包带着同一个 tag 的情况，导致帧统计完全错乱）。
+// 把帧标识写进载荷最前面的 22 个字节则不受分片/拼接影响，
+// 而且这也更接近真实应用自己做的封装。
+//
+// ============================================================================
+// 两个类
+// ============================================================================
+//   XrFrameSource  —— 发送端：按 60 fps 生成帧，每帧切成若干 1400 字节的包，
+//                     每个包都带 22 字节帧头（帧号、包序号、总包数、帧长、发送时刻）
+//   XrFrameSink    —— 接收端：按帧头把包归拢成帧，记录每帧的完成时刻与端到端时延，
+//                     最后输出 frame_stats_*.csv 与 frame_per_ue.csv
+//
+// 这两端是 FSR 的唯一数据来源：FSR = 完整收到的帧数 / 发出的帧数。
 
 #ifndef RTSR_FRAME_AGENTS_H
 #define RTSR_FRAME_AGENTS_H
@@ -31,6 +43,15 @@
 namespace ns3
 {
 
+/// 每包 22 字节的帧头，放在 UDP 载荷最前面。
+///
+/// 字段含义：
+///   magic      —— 固定 0xA5C3，用来在接收端快速校验（不是本项目的包就丢掉）
+///   frameId    —— 帧号；高 12 位编了 UE 号，这样 RLC 丢包能归因到具体 UE
+///   seq        —— 本包在该帧内的序号（0 起）
+///   total      —— 该帧一共切成几个包
+///   frameBytes —— 该帧的总字节数
+///   sendNs     —— 该帧的发送时刻（纳秒），用于算端到端时延
 struct FrameHeader
 {
     static const uint32_t kSize = 22;
