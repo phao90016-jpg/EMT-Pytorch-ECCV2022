@@ -1,6 +1,41 @@
 // Copyright (c) 2023 Centre Tecnologic de Telecomunicacions de Catalunya (CTTC)
 //
 // SPDX-License-Identifier: GPL-2.0-only
+//
+// ============================================================================
+// RTSR 阶段一：ns-3 + 5G-LENA 的 XR 视频仿真
+// ============================================================================
+//
+// 这个程序在 5G-LENA 自带的 cttc-nr-traffic-3gpp-xr 例子上改出来，做三件事：
+//
+//   1. 搭一个可配的 3GPP 拓扑（1 站或 7 站 x 3 扇区），终端按扇区撒点
+//   2. 跑论文的 XR 流量模型（20 Mbps/60 fps/10 ms PDB，或 RTSR 的 10 Mbps + 模型流）
+//   3. 把 PDCP / RLC / MAC / PHY 四层的计数全部落盘成 CSV，供上层脚本算 FSR 与容量
+//
+// ============================================================================
+// 三层字节计数的口径（**报容量时最容易搞错的地方**）
+// ============================================================================
+//   pdcp_tx_bytes       —— PDCP 交给 RLC 的净荷字节。**这是最可信的"提供量"**，
+//                          不受下面 MAC 去重逻辑的影响。
+//   scheduled_bytes     —— MAC 层调度出去的 TB 字节（含 MAC 头与填充）。
+//                          ⚠️ 这一项曾因去重键碰撞而少算约 20-35%，见下面的说明。
+//   scheduled_bytes_raw —— 同一批 TB，但**不经过去重**。用来和上面那项对照。
+//   rlc_drops.csv       —— RLC 丢弃的 SDU（按帧号归因）。只覆盖"已进 RLC 队列"的包。
+//
+// 去重键的坑（2026-11-18 修复）：原来的键是 (cell, frame, slot, symStart, rnti)，
+// 但实测有 2,639 个 TB 与已记录的键相同而**大小不同** —— 它们是两个挤进同一槽位的
+// 真 TB，被误当成"重复的 trace"丢掉了。修法：键里再加 TB 字节数。
+// 用 duplicate_key_diff_size 这个计数器可以监控这个问题有没有复发。
+//
+// ============================================================================
+// 已知的测量陷阱（踩过的，写在这里免得再踩）
+// ============================================================================
+//   * 应用在 400 ms 启动，而 --warmupMs 是从**应用启动时刻**算的，
+//     所以 --warmupMs=500 + --simTimeMs=1000 时，帧统计窗口只有 100 ms。
+//   * 同理，算容量时分母要用"应用实际运行的时长"，不是仿真总时长。
+//   * paperTable3 这个 preset 在解析完命令行**之后**才生效，会覆盖
+//     --pdcchSymbols / --gnbRows / --gnbCols 等参数。要测这些必须绕开 preset。
+//   * ns-3 只接受 --flag=value 写法，--flag value 会被判为非法参数。
 
 #include "ns3/antenna-module.h"
 #include "ns3/applications-module.h"
@@ -1484,6 +1519,26 @@ main(int argc, char* argv[])
     cmd.AddValue("lc",
                  "LC algorithm that sizes the grants: qos (default) | rr",
                  lc);
+    // ---- 诊断开关（都不改变默认行为；打开它们是为了回答"容量卡在哪一层"）----
+    //
+    //   --uePanels=1|2         UE 天线面板数。本版本里它**就是流数**（InstallUeDevice 的
+    //                          第三个参数），1 = 单流。实测开 2 面板 + rank2 只 +0.8%。
+    //   --rankMode=fixed1|fixed2|adaptive
+    //                          MIMO rank。ns-3 默认 UseFixedRi=true + RI=1，即**固定单流**；
+    //                          adaptive 才会按 SINR 自适应选 rank（门限 10 dB）。
+    //   --bfMode=ideal|none    ideal = 逐 UE 对准的理想波束（默认）；none = 全体共用一个
+    //                          固定波束。关掉波束会让 SINR 掉 30 dB，一般只用于诊断。
+    //   --pdcpDiscard=0|1      RLC UM 的队首准入控制。关掉它吞吐反而降 25%。
+    //   --rlcDiscardMs=N       覆盖 RLC 丢弃定时器（0 = 用承载的 PDB）。放宽到 300 ms
+    //                          吞吐也降 25% —— 让过期数据赖在队列里只会拖慢新数据。
+    //   --videoQci=68|9        视频承载的 QCI。68 = 10 ms PDB（论文值），9 = 300 ms。
+    //                          注意两者 RLC 模式不同（UM vs AM），不能只当 PDB 变量看。
+    //   --forceVideoBitrate=N  覆盖每 UE 的提供负载（在 scheme 默认值**之后**生效）。
+    //                          用来把系统压到饱和，测真实容量上限。
+    //   --appStartTimeMs=N     应用启动时刻（默认 400 ms）。调小可以让统计窗口覆盖更长，
+    //                          但要注意承载建立之前发的帧会丢。
+    //   --channelUpdatePeriodMs=N  3GPP 信道矩阵的重算周期。实测对速度影响 <5%，
+    //                          不是性能瓶颈（真正的成本是 UE x 小区 的链路数）。
     cmd.AddValue("uePanels",
                  "Number of UE antenna panels (= streams in this 5G-LENA version); 1 = SISO",
                  uePanels);

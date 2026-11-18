@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# M6 全量批跑：6 个 UE 点数 x 2 方案 x 3 种子 = 36 条 run，5 路并行。
+#
+# 每条 run 调一次 sl/run_point.py（1000 s，理想档），结果落到 RTSR/sl/results/m6/。
+# 全量约 20 小时。
+#
+# ⚠️ 路径坑（2026-11 踩过）：OUT 必须带 RTSR/ 前缀。少了前缀会把 20 小时的结果
+#    写进仓库根下的 stray sl/ 目录。下面有一段 cwd 自检，就是这个原因。
+#
+#!/usr/bin/env bash
 # M6: 36 runs (6 UE/cell points x 2 schemes x 3 seeds), 1000 s each, 5 in parallel.
 set -uo pipefail
 cd /home/penghao/code/EMT-Pytorch-ECCV2022 || exit 1

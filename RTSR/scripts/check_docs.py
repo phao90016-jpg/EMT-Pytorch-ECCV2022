@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""文档一致性校验：CSV 与文档里的数字对不对得上、偏差条数、相对链接是否有效。
+
+改完文档或重新跑出结果后必须执行一次：
+    python3 RTSR/scripts/check_docs.py
+
+三项检查：
+  1. summary2.csv 里的 run 数与 docs/03 里写的数字是否一致
+  2. 偏差表里的条数（目前 14 条）与文档正文是否一致
+  3. 各 md 文件里的相对链接是否都能解析到真实文件
+"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """check_docs.py - verify that docs/ stays consistent with the data.
 
 Checks

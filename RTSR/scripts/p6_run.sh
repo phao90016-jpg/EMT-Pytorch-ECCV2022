@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# ns-3 阶段一（P6）的批跑脚本：每个 (UE 数, 方案) 点跑一次 6 s 的高保真仿真。
+#
+# 单条墙钟随 UE 数增长很快（6 UE 约 3.9 h，18 UE 约 17.6 h），因为成本正比于
+# UE x 小区 的链路数。所以阶段一只有 4 个点（6/9/12/18），不是全量。
+#
+#!/usr/bin/env bash
 # P6 / T4 sweep runner.
 #
 # Idempotent: a run whose result directory contains a DONE marker is skipped, so the
