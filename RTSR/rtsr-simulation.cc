@@ -148,6 +148,11 @@ static uint32_t g_rlcDiscardMs = 0;
 // head of line has already waited longer than the discard timer.  Turning it OFF lets
 // the RLC queue grow, which exposes the raw air-interface capacity behind the PDB gate.
 static bool g_pdcpDiscard = true;
+// Beamforming mode: "ideal" = IdealBeamformingHelper + DirectPathBeamforming (the
+// default, per-UE steering).  "none" = no beam management at all, so every UE uses the
+// same fixed beam.  Diagnostic: with a fixed beam, OFDMA no longer suffers the
+// per-symbol beam mismatch that makes it unusable with per-UE steering.
+static std::string g_bfMode = "ideal";
 static std::set<uint32_t> g_centerUeIps; // Ipv4Address.Get() of the measured UEs
 static bool IsCenterSite(uint32_t site);
 static bool IsCenterUe(uint32_t ueNodeId);
@@ -1274,6 +1279,7 @@ main(int argc, char* argv[])
     uint16_t videoQci = 68;
     uint32_t rlcDiscardMs = 0;
     bool pdcpDiscard = true;
+    std::string bfMode = "ideal";
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("arUeNum", "The number of AR UEs", arUeNum);
@@ -1371,6 +1377,9 @@ main(int argc, char* argv[])
     cmd.AddValue("lc",
                  "LC algorithm that sizes the grants: qos (default) | rr",
                  lc);
+    cmd.AddValue("bfMode",
+                 "Beamforming: ideal (per-UE steering, default) | none (single fixed beam)",
+                 bfMode);
     cmd.AddValue("pdcpDiscard",
                  "Diagnostic: RLC UM head-of-line admission control (1 = on, 0 = off)",
                  pdcpDiscard);
@@ -1417,6 +1426,7 @@ main(int argc, char* argv[])
     g_videoQci = videoQci;
     g_rlcDiscardMs = rlcDiscardMs;
     g_pdcpDiscard = pdcpDiscard;
+    g_bfMode = bfMode;
     if (!g_pdcpDiscard)
     {
         Config::SetDefault("ns3::LteRlcUm::EnablePdcpDiscarding", BooleanValue(false));
@@ -1627,10 +1637,21 @@ main(int argc, char* argv[])
                                     PointerValue(CreateObject<IsotropicAntennaModel>()));
 
     // Beamforming method
-    Ptr<IdealBeamformingHelper> idealBeamformingHelper = CreateObject<IdealBeamformingHelper>();
-    idealBeamformingHelper->SetAttribute("BeamformingMethod",
-                                         TypeIdValue(DirectPathBeamforming::GetTypeId()));
-    nrHelper->SetBeamformingHelper(idealBeamformingHelper);
+    if (g_bfMode == "none")
+    {
+        // No BeamformingHelper at all: the PHY keeps the default beam for every UE, so all
+        // UEs of a cell share one radiation pattern.  Diagnostic only.
+        std::cout << "[BF] beamforming DISABLED (single fixed beam)" << std::endl;
+    }
+    else
+    {
+        Ptr<IdealBeamformingHelper> idealBeamformingHelper =
+            CreateObject<IdealBeamformingHelper>();
+        idealBeamformingHelper->SetAttribute("BeamformingMethod",
+                                             TypeIdValue(DirectPathBeamforming::GetTypeId()));
+        nrHelper->SetBeamformingHelper(idealBeamformingHelper);
+        std::cout << "[BF] ideal beamforming (per-UE direct-path steering)" << std::endl;
+    }
 
     Ptr<NrPointToPointEpcHelper> epcHelper = CreateObject<NrPointToPointEpcHelper>();
     nrHelper->SetEpcHelper(epcHelper);
