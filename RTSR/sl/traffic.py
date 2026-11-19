@@ -57,6 +57,9 @@ class Traffic:
 
         self.frames_sent = np.zeros(n, dtype=np.int64)   # FSR 的分母
         self.frames_ok = np.zeros(n, dtype=np.int64)     # FSR 的分子
+        # 诊断用：4 个槽位全占满时新到达的帧会被静默丢弃（已计入 sent 但永远不会成功）。
+        # 这个计数器用来判断：失败里有多少其实是队列溢出，而不是真的超时。
+        self.frames_noslot = np.zeros(n, dtype=np.int64)
 
     # ------------------------------------------------------------- 帧到达
     def _schedule_next_arrival(self, idx, now_tti):
@@ -102,6 +105,8 @@ class Traffic:
                 has = free.any(axis=1)
                 slot = free.argmax(axis=1)
                 sel = idx[has]
+                if np.any(~has):
+                    self.frames_noslot[idx[~has]] += 1
                 self.frame_alive[sel, slot[has]] = True
                 self.frame_rem[sel, slot[has]] = sizes[has]
                 self.frame_deadline[sel, slot[has]] = now_tti + self.pdb_tti
@@ -177,6 +182,7 @@ class Traffic:
         """
         self.frames_sent[:] = 0
         self.frames_ok[:] = 0
+        self.frames_noslot[:] = 0
         self.frame_alive[:] = False
         self.frame_rem[:] = 0.0
         self.model_backlog[:] = 0.0
