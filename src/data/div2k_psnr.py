@@ -1,3 +1,9 @@
+"""DIV2K 的 PSNR 评估专用版本。
+
+与 div2k.py 的区别：评估时不做随机裁剪，而是按固定的步长切块，
+保证每次评估用的样本完全一致（否则 PSNR 会随机波动）。
+"""
+
 import os
 import random
 import pickle

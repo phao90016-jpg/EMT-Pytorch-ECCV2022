@@ -1,3 +1,8 @@
+"""RDN（Residual Dense Network，CVPR 2018）。
+
+密集连接 + 残差，特征复用充分，但参数量大。
+"""
+
 # Residual Dense Network for Image Super-Resolution
 # https://arxiv.org/abs/1802.08797
 

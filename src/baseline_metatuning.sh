@@ -1,3 +1,8 @@
+# 元调优基线实验的批跑脚本。
+# 
+# 用预训练好的 MAML 模型（local_maml_espcn_x2_p144_b8_e50）在 VSD4K 的
+# lol_15s_1 片段上做微调，作为「不用梯度掩码」的对照组。
+
 cd "$(dirname "$0")"
 
 MAML=/home/penghao/code/EMT-Pytorch-ECCV2022/experiment/experiment/local_maml_espcn_x2_p144_b8_e50/model/46/model_best.pt

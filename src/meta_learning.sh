@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 元学习（MAML 预训练）的启动脚本：在 DIV2K 上训练一个通用初始化。
+
 set -euo pipefail
 
 cd "$(dirname "$0")"

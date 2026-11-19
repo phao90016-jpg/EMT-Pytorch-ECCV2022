@@ -1,3 +1,8 @@
+"""VGG 感知损失。
+
+用预训练 VGG 的中间层特征算 L1 距离，比逐像素 L1 更贴近人眼感受。
+"""
+
 from model import common
 
 import torch

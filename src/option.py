@@ -1,3 +1,9 @@
+"""命令行参数定义（全部超参数都在这里）。
+
+这是整个算法侧的配置中心：模型名、scale、patch 大小、batch、学习率、
+数据路径、损失类型、元学习开关等。默认值 + 命令行覆盖。
+"""
+
 import argparse
 import template
 

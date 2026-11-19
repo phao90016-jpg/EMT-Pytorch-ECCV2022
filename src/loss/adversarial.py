@@ -1,3 +1,9 @@
+"""对抗损失（GAN 训练用）。
+
+让超分模型的输出在判别器看来更像真实高清图，从而提升主观质量
+（PSNR 可能略降，但更锐利）。
+"""
+
 import utility
 from types import SimpleNamespace
 

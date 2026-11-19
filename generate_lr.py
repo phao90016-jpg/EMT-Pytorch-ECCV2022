@@ -1,3 +1,9 @@
+"""从 DIV2K 高清图批量生成 2 倍下采样的低清图（bicubic）。
+
+本项目自研的辅助脚本：训练超分模型需要成对的「高清 / 低清」样本，
+这里用 PIL 的 bicubic 把 DIV2K_train_HR 缩到 X2 目录，作为训练输入。
+"""
+
 from pathlib import Path
 from PIL import Image
 

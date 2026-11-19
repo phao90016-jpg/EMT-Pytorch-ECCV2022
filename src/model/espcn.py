@@ -1,3 +1,9 @@
+"""ESPCN（Efficient Sub-Pixel CNN）。
+
+核心是 pixel-shuffle：在低分辨率上做卷积，最后一次性重排成高分辨率，
+计算量远小于在 HR 上卷积。**本项目的主力模型**——轻量、适合端侧实时推理。
+"""
+
 import math
 import torch.nn as nn
 import torch.nn.init as init

@@ -1,3 +1,9 @@
+"""所有超分数据集的**基类**。
+
+负责：读目录、缓存成 pickle（加速二次加载）、按 scale 找对应的 LR 目录、
+调用 common.get_patch 做增强。子类只需要指定数据集名字和范围。
+"""
+
 import os
 import glob
 import random

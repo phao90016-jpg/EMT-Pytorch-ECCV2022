@@ -1,3 +1,8 @@
+"""多线程数据加载器（从 PyTorch 官方 DataLoader 改的）。
+
+改动的目的：支持自定义的 batch 组装方式，以及元学习需要的特殊采样。
+"""
+
 import threading
 import random
 

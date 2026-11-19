@@ -1,3 +1,5 @@
+# 元调优的启动脚本：在预训练模型基础上做测试与微调。
+
 CUDA_VISIBLE_DEVICES=0 python main.py --data_test DIV2K --scale 2 --maml --model espcn --patchnet_test  --test_only --pre_train ../experiment/metaLearned.pt --data_range 1-1350 --dir_data /home/oppoer/liujiaming/VSD4K/black_45s_1
 
 CUDA_VISIBLE_DEVICES=0 python main.py --model espcn --scale 2 --patch_size 144 --batch_size 16 --maml --save ./eccv2022/black45s_L/espcn_maml_e300_gm0.20_p0.20_black45s_MG1_0227 --pre_train ../experiment/metaLearned.pt --reset --data_train DIV2K_PSNR --data_test DIV2K --data_range 1-150/1-150 --is45s --dir_data /home/oppoer/liujiaming/VSD4K/black_45s_1 --save_every --find_mask --epoch 2 --test_every 1000 --p_mask 0.20 --data_partion 0.20 --dir_mask ../grad_mask/mask_black.pt

@@ -1,3 +1,9 @@
+"""带梯度掩码的训练器。
+
+在 MAML 的基础上，只对掩码标记的位置做梯度更新（省算力），
+对应论文里「只更新重要区域」的设计。
+"""
+
 import os
 import math
 from decimal import Decimal

@@ -1,3 +1,6 @@
+"""SRVC：面向视频超分的模型变体。
+"""
+
 import math
 from model import common
 import torchsnooper

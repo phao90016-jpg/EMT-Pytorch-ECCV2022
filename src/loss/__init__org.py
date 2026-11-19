@@ -1,3 +1,8 @@
+"""损失函数入口的**原始备份**（未改动版）。
+
+保留它是为了对照——线上版本在这份基础上加了 RTSR 需要的项。
+"""
+
 import os
 from importlib import import_module
 

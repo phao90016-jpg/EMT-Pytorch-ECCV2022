@@ -1,3 +1,5 @@
+# 在 VSD4K 的 sport 片段上做元调优（带梯度掩码）。
+
 cd "$(dirname "$0")"
 
 MAML=/home/penghao/code/EMT-Pytorch-ECCV2022/experiment/experiment/local_maml_espcn_x2_p144_b8_e50/model/46/model_best.pt

@@ -1,3 +1,6 @@
+"""SR291 数据集（291 张图，超分早期工作常用的训练集）。
+"""
+
 from data import srdata
 
 class SR291(srdata.SRData):

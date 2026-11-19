@@ -1,3 +1,9 @@
+"""通用工具集。
+
+包括：检查点保存/加载、日志（Logger）、计时（Timer）、PSNR/SSIM 计算、
+参数量统计。被几乎所有其他模块引用。
+"""
+
 import os
 import math
 import time

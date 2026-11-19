@@ -1,3 +1,9 @@
+"""训练 / 测试的主入口。
+
+流程：解析参数（option.py）-> 应用模板（template.py）-> 建模型 -> 建数据加载器
+-> 建训练器 -> 训练或测试。
+"""
+
 import torch
 import numpy as np
 import random

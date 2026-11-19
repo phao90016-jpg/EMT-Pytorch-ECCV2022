@@ -1,3 +1,6 @@
+"""MDSR（Multi-Scale Deep SR）：一个模型同时支持多种放大倍数。
+"""
+
 from model import common
 
 import torch.nn as nn

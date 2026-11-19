@@ -1,3 +1,8 @@
+"""DBPN（Deep Back-Projection Network，CVPR 2018）。
+
+用「上采样-下采样」交替的反馈结构来重建高频细节。
+"""
+
 # Deep Back-Projection Networks For Super-Resolution
 # https://arxiv.org/abs/1803.02735
 

@@ -1,3 +1,9 @@
+"""DIV2K 数据集（超分领域最常用的训练集，800 张 2K 图）。
+
+继承 srdata.SRData，只负责解析 data_range（例如 "1-800/801-900" 表示
+训练用 1-800、验证用 801-900）。
+"""
+
 import os
 from data import srdata
 

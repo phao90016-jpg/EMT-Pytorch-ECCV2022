@@ -1,3 +1,9 @@
+"""ESPCN 的**原始版本**备份（未做本项目改动）。
+
+保留它是为了对照：espcn.py 是在这份基础上加了 RTSR 需要的组件
+（可分离卷积、掩码支持等）。两者的网络结构主体一致，差异在细节。
+"""
+
 import math
 from torch import nn
 import torch.nn.init as init

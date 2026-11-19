@@ -1,3 +1,8 @@
+"""预设模板：按 args.template 的名字批量修改一组参数。
+
+好处是常用配置组合不用每次敲一长串命令行。
+"""
+
 def set_template(args):
     # Set the templates here
     if args.template.find('jpeg') >= 0:

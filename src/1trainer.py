@@ -1,3 +1,9 @@
+"""训练器（早期版本）。（上游 EMT-Pytorch-ECCV2022 基线代码，非本项目新增）
+
+与 trainer_maml.py 结构类似：封装了前向、反向、验证、保存检查点。
+保留它是因为早期的实验记录引用了这个文件。
+"""
+
 import os
 import math
 from decimal import Decimal

@@ -1,3 +1,9 @@
+"""模型的公共组件。（上游 EMT-Pytorch-ECCV2022 基线代码，非本项目新增）
+
+包括：卷积封装（Conv）、残差块（ResBlock）、上采样（Upsampler，含
+pixel-shuffle 与转置卷积两种）、以及各种初始化。所有具体模型都复用这些积木。
+"""
+
 import math
 
 import torch

@@ -1,3 +1,9 @@
+"""自定义采样器：把数据集切成两段，轮流从中采样。
+
+用途是元学习（MAML）：需要每个 batch 里同时包含「支撑集」和「查询集」两类样本，
+所以不能简单用随机采样。
+"""
+
 from torch.utils.data.sampler import Sampler
 
 class MySampler(Sampler):

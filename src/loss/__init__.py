@@ -1,3 +1,9 @@
+"""损失函数的统一入口。
+
+按 args.loss 的名字动态导入对应实现（L1 / L2 / 感知损失 / 对抗损失等），
+并把它们组合成一个总的损失函数。
+"""
+
 import os
 from importlib import import_module
 from option import args

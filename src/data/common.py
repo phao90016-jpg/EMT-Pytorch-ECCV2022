@@ -1,3 +1,12 @@
+"""数据增强与预处理工具函数。（上游 EMT-Pytorch-ECCV2022 基线代码，非本项目新增）
+
+主要功能：
+  - get_patch：随机裁剪成 patch（训练时用）
+  - augment：随机翻转 / 旋转 90 度做数据增强
+  - set_channel / quantize：RGB 与 YCbCr 通道转换、像素量化
+超分任务的标准做法是**只在 Y 通道上算 PSNR**，所以这里要单独处理通道。
+"""
+
 import random
 
 import numpy as np

@@ -1,3 +1,8 @@
+"""模型工厂：按 args.model 的名字动态导入并实例化模型。
+
+同时负责多 GPU 并行、预训练权重加载、以及打印模型参数量。
+"""
+
 import os
 from importlib import import_module
 

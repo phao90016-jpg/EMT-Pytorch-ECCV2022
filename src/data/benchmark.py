@@ -1,3 +1,8 @@
+"""标准超分测试集的加载器（Set5 / Set14 / B100 / Urban100）。
+
+这些是学术界通用的评测集，用于报 PSNR/SSIM。和 DIV2K 训练集分开。
+"""
+
 import os
 
 from data import common

@@ -1,3 +1,9 @@
+"""生成梯度掩码（gradient mask）。
+
+RTSR/EMT 的核心技巧之一：只对「变化剧烈」的区域做超分/更新，
+从而省算力和带宽。这个脚本算出哪些位置的梯度值得更新，存成 mask_*.pt。
+"""
+
 import torch
 import numpy as np
 import time

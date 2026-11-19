@@ -1,3 +1,8 @@
+"""VDSR（Very Deep SR，CVPR 2016）：20 层卷积 + 全局残差学习。
+
+全局残差（学习 LR 到 HR 的残差而不是直接学 HR）是它的关键贡献。
+"""
+
 from model import common
 
 import torch.nn as nn

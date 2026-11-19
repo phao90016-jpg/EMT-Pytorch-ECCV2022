@@ -1,3 +1,8 @@
+"""RCAN（Residual Channel Attention Network，ECCV 2018）。
+
+用通道注意力（SE 模块）加权不同通道的特征，是 PSNR 导向的强基线。
+"""
+
 ## ECCV-2018-Image Super-Resolution Using Very Deep Residual Channel Attention Networks
 ## https://arxiv.org/abs/1807.02758
 from model import common

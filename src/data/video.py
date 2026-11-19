@@ -1,3 +1,6 @@
+"""视频帧数据集：从视频里逐帧读图，用于视频超分实验。
+"""
+
 import os
 
 from data import common

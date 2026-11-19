@@ -1,3 +1,8 @@
+"""PatchNet：判断一个图像块「值不值得超分」的轻量网络。
+
+这是 RTSR 思路的关键组件——先用小网络筛掉不需要处理的区域，省算力。
+"""
+
 from model import common
 import torch.nn.functional as F
 import torch.nn as nn

@@ -1,3 +1,8 @@
+"""SRCNN（超分开山之作，ECCV 2014）：三层卷积。
+
+作为最朴素的基线，用来对照后续模型相对它的提升。
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.init as init

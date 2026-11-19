@@ -1,3 +1,8 @@
+"""判别器网络：判断一张图是真实高清图还是超分重建的。
+
+对抗训练里与生成器（超分模型）交替训练。
+"""
+
 from model import common
 
 import torch.nn as nn

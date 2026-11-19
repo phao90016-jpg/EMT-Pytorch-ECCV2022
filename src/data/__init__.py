@@ -1,3 +1,9 @@
+"""数据加载器的统一入口。
+
+按数据集名字（`args.data_train` / `args.data_test`）动态导入对应的模块并实例化，
+这样 option.py 里改一个字符串就能换数据集，不用改代码。
+"""
+
 from importlib import import_module
 #from dataloader import MSDataLoader
 from torch.utils.data import dataloader

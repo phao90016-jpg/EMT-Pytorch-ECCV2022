@@ -1,3 +1,6 @@
+"""模型可视化入口：跑一遍前向，导出中间特征图。
+"""
+
 import torch
 import numpy as np
 import random

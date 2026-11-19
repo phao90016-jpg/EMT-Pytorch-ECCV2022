@@ -1,3 +1,6 @@
+"""演示用数据集：只读一张图，用于快速验证模型能否跑通。
+"""
+
 import os
 
 from data import common

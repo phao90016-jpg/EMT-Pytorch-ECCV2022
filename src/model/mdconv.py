@@ -1,3 +1,6 @@
+"""可变形卷积（Deformable Conv）的封装，用于需要空间自适应的模型。
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -1,3 +1,5 @@
+# 元学习预训练的本地小规模版本（跑得更快，用于调试）。
+
 cd "$(dirname "$0")"
 
 CUDA_VISIBLE_DEVICES=0 python main.py \

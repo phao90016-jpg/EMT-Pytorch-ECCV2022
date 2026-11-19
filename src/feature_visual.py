@@ -1,3 +1,8 @@
+"""特征可视化：用余弦距离比较两个特征图的相似度。
+
+用于论文里的可视化图——展示不同模型提取的特征差异。
+"""
+
 import numpy as np
 from numpy.linalg import norm
 import torch

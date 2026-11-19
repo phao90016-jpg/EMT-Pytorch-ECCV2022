@@ -1,3 +1,9 @@
+"""寻找「拐点」的入口。
+
+用途：扫描不同的码率/更新频率，找出画质开始明显下降的那个临界点，
+用来论证 RTSR 的「按需更新」策略。
+"""
+
 import torch
 import numpy as np
 import random
