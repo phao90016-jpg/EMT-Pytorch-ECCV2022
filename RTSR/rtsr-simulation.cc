@@ -189,6 +189,8 @@ static bool g_pdcpDiscard = true;
 // same fixed beam.  Diagnostic: with a fixed beam, OFDMA no longer suffers the
 // per-symbol beam mismatch that makes it unusable with per-UE steering.
 static std::string g_bfMode = "ideal";
+// 量化波束网格宽度（度）。仅 bfMode=quantized 时生效。
+static double g_beamGridDeg = 15.0;
 // MIMO rank mode.  ns-3 defaults are UseFixedRi=true + FixedRankIndicator=1, i.e. the
 // simulation runs single-stream unless told otherwise.  "adaptive" enables the SINR-driven
 // RI selection (NrUePhy::SelectRi, thresholds RiSinrThreshold1/2 = 10 dB).
@@ -1443,6 +1445,7 @@ main(int argc, char* argv[])
     uint32_t rlcDiscardMs = 0;
     bool pdcpDiscard = true;
     std::string bfMode = "ideal";
+    double beamGridDeg = 15.0;
     std::string rankMode = "fixed1";
     uint32_t uePanels = 1;
 
@@ -1573,8 +1576,14 @@ main(int argc, char* argv[])
                  "MIMO rank: fixed1 (ns-3 default) | fixed2 | adaptive (SINR-driven RI)",
                  rankMode);
     cmd.AddValue("bfMode",
-                 "Beamforming: ideal (per-UE steering, default) | none (single fixed beam)",
+                 "Beamforming: ideal (per-UE steering, default) | quantized (per-UE steering + "
+                 "quantised BeamId so that the OFDMA scheduler can group UEs by direction) | "
+                 "none (single fixed beam)",
                  bfMode);
+    cmd.AddValue("beamGridDeg",
+                 "Width of the beam-grid quantisation used by bfMode=quantized, in degrees "
+                 "(smaller -> closer to TDMA, larger -> more OFDMA multiplexing)",
+                 beamGridDeg);
     cmd.AddValue("pdcpDiscard",
                  "Diagnostic: RLC UM head-of-line admission control (1 = on, 0 = off)",
                  pdcpDiscard);
@@ -1622,6 +1631,7 @@ main(int argc, char* argv[])
     g_rlcDiscardMs = rlcDiscardMs;
     g_pdcpDiscard = pdcpDiscard;
     g_bfMode = bfMode;
+    g_beamGridDeg = beamGridDeg;
     g_rankMode = rankMode;
     g_uePanels = static_cast<uint8_t>(uePanels);
     if (!g_pdcpDiscard)
@@ -1863,10 +1873,25 @@ main(int argc, char* argv[])
     {
         Ptr<IdealBeamformingHelper> idealBeamformingHelper =
             CreateObject<IdealBeamformingHelper>();
-        idealBeamformingHelper->SetAttribute("BeamformingMethod",
-                                             TypeIdValue(DirectPathBeamforming::GetTypeId()));
+        if (g_bfMode == "quantized")
+        {
+            // 扩展模式：波束矢量仍逐 UE 精确导向，但额外给出量化后的 BeamId，
+            // 让 OFDMA 调度器能按方向分组（否则所有 UE 被当成同一波束）。
+            Config::SetDefault("ns3::QuantizedDirectPathBeamforming::BeamGridDeg",
+                               DoubleValue(g_beamGridDeg));
+            idealBeamformingHelper->SetAttribute(
+                "BeamformingMethod",
+                TypeIdValue(QuantizedDirectPathBeamforming::GetTypeId()));
+            std::cout << "[BF] quantized beamforming (grid " << g_beamGridDeg
+                      << " deg) - OFDMA beam grouping enabled" << std::endl;
+        }
+        else
+        {
+            idealBeamformingHelper->SetAttribute("BeamformingMethod",
+                                                 TypeIdValue(DirectPathBeamforming::GetTypeId()));
+            std::cout << "[BF] ideal beamforming (per-UE direct-path steering)" << std::endl;
+        }
         nrHelper->SetBeamformingHelper(idealBeamformingHelper);
-        std::cout << "[BF] ideal beamforming (per-UE direct-path steering)" << std::endl;
     }
 
     Ptr<NrPointToPointEpcHelper> epcHelper = CreateObject<NrPointToPointEpcHelper>();
