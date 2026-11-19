@@ -191,6 +191,8 @@ static bool g_pdcpDiscard = true;
 static std::string g_bfMode = "ideal";
 // 量化波束网格宽度（度）。仅 bfMode=quantized 时生效。
 static double g_beamGridDeg = 15.0;
+// 路线1：波束指向格中心（而非某个具体 UE）。仅 bfMode=quantized 时生效。
+static bool g_beamCentroid = false;
 // MIMO rank mode.  ns-3 defaults are UseFixedRi=true + FixedRankIndicator=1, i.e. the
 // simulation runs single-stream unless told otherwise.  "adaptive" enables the SINR-driven
 // RI selection (NrUePhy::SelectRi, thresholds RiSinrThreshold1/2 = 10 dB).
@@ -1446,6 +1448,7 @@ main(int argc, char* argv[])
     bool pdcpDiscard = true;
     std::string bfMode = "ideal";
     double beamGridDeg = 15.0;
+    bool beamCentroid = false;
     std::string rankMode = "fixed1";
     uint32_t uePanels = 1;
 
@@ -1584,6 +1587,11 @@ main(int argc, char* argv[])
                  "Width of the beam-grid quantisation used by bfMode=quantized, in degrees "
                  "(smaller -> closer to TDMA, larger -> more OFDMA multiplexing)",
                  beamGridDeg);
+    cmd.AddValue("beamCentroid",
+                 "Route 1: steer the beam to the CENTRE of the quantisation bin instead of to "
+                 "one specific UE, so all UEs sharing a bin see at most half a bin-width of "
+                 "offset (only with bfMode=quantized)",
+                 beamCentroid);
     cmd.AddValue("pdcpDiscard",
                  "Diagnostic: RLC UM head-of-line admission control (1 = on, 0 = off)",
                  pdcpDiscard);
@@ -1632,6 +1640,7 @@ main(int argc, char* argv[])
     g_pdcpDiscard = pdcpDiscard;
     g_bfMode = bfMode;
     g_beamGridDeg = beamGridDeg;
+    g_beamCentroid = beamCentroid;
     g_rankMode = rankMode;
     g_uePanels = static_cast<uint8_t>(uePanels);
     if (!g_pdcpDiscard)
@@ -1879,11 +1888,14 @@ main(int argc, char* argv[])
             // 让 OFDMA 调度器能按方向分组（否则所有 UE 被当成同一波束）。
             Config::SetDefault("ns3::QuantizedDirectPathBeamforming::BeamGridDeg",
                                DoubleValue(g_beamGridDeg));
+            Config::SetDefault("ns3::QuantizedDirectPathBeamforming::SteerToBinCenter",
+                               BooleanValue(g_beamCentroid));
             idealBeamformingHelper->SetAttribute(
                 "BeamformingMethod",
                 TypeIdValue(QuantizedDirectPathBeamforming::GetTypeId()));
-            std::cout << "[BF] quantized beamforming (grid " << g_beamGridDeg
-                      << " deg) - OFDMA beam grouping enabled" << std::endl;
+            std::cout << "[BF] quantized beamforming (grid " << g_beamGridDeg << " deg, "
+                      << (g_beamCentroid ? "steer-to-bin-centre" : "steer-to-UE")
+                      << ") - OFDMA beam grouping enabled" << std::endl;
         }
         else
         {
