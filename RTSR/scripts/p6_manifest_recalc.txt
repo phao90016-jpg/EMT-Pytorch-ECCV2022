@@ -1,0 +1,9 @@
+# P6 容量重算 manifest（去重键修复后）
+# T1：文档最依赖的点（12 UE/cell）
+p6-12-conv|--scheme=conventional --uePerCell=12 --appDuration=6000
+p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
+# T2：低载段
+p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=6000
+p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
+p6-9-conv|--scheme=conventional --uePerCell=9 --appDuration=6000
+p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000
