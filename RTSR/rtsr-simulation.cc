@@ -376,6 +376,9 @@ static uint64_t g_macDupDiffSize = 0;  // duplicate key with a different TB size
 // 若绝大多数 TB 已经落在最高 MCS（256QAM，索引 28），说明 MCS 已经顶格，
 // 外环链路自适应（OLLA）再聪明也没有余量可挖。
 static std::map<uint8_t, uint64_t> g_macMcsHist;
+// 每个 (cell, frame, slot, symStart) 上落了几个 TB —— 直接测"同符号复用"。
+// OFDMA 若工作正常，一个符号里会有多个 UE；TDMA 恒为 1。
+static std::map<uint64_t, std::set<uint16_t>> g_slotRntis;
 
 // ---- diagnostic: periodic sample of the gNB RLC transmit-buffer occupancy ----
 struct RlcBufSample
@@ -494,6 +497,16 @@ OnDlScheduling(uint16_t cellId, NrSchedulingCallbackInfo info)
         }
         ++g_macTbs;
         ++g_macMcsHist[info.m_mcs];
+        {
+            // 时隙键（不含 symStart —— 实测该字段在 trace 里不可靠，同一符号会冒出几十个 TB）。
+            // 记下这个时隙里出现过哪些 rnti，就能知道"一个时隙服务了几个 UE"。
+            // TDMA 应约等于 served_per_tti(2)，OFDMA 应约等于同时有数据的 UE 数。
+            const uint64_t symKey = (static_cast<uint64_t>(cellId) << 48) |
+                                    (static_cast<uint64_t>(info.m_frameNum & 0xffff) << 32) |
+                                    (static_cast<uint64_t>(info.m_slotNum & 0xff) << 24) |
+                                    (static_cast<uint64_t>(info.m_symStart) << 16);
+            g_slotRntis[symKey].insert(info.m_rnti);
+        }
         g_macTbBytes += info.m_tbSize;
         // count retransmissions separately through the RV field
         if (info.m_rv != 0)
@@ -636,6 +649,20 @@ DumpMacPhy(bool announce)
     mac << "scheduled_bytes," << g_macTbBytes << "\n";
     mac << "scheduled_bytes_raw," << g_macRawBytes << "\n";
     mac << "duplicate_key_diff_size," << g_macDupDiffSize << "\n";
+    {
+        // 每个符号上 TB 数的分布：1 个 = 独享符号（TDMA 特征），>1 = 同符号复用
+        std::map<uint32_t, uint64_t> hist;
+        for (const auto& kv : g_slotRntis)
+        {
+            ++hist[static_cast<uint32_t>(kv.second.size())];
+        }
+        std::ofstream sym("ues_per_symbol.csv");
+        sym << "ues_per_symbol,symbol_count\n";
+        for (const auto& kv : hist)
+        {
+            sym << kv.first << "," << kv.second << "\n";
+        }
+    }
     {
         std::ofstream mcs("mcs_hist.csv");
         mcs << "mcs,tbs\n";
