@@ -1,0 +1,6 @@
+metric,value
+video_tx_packets,975767
+video_rx_packets,974533
+model_tx_packets,93555
+model_rx_packets,93547
+measured_ues,189
