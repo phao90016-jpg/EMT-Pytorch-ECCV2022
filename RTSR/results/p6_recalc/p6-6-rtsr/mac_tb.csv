@@ -1,0 +1,13 @@
+metric,value
+pdcp_tx_pdus,1371647
+pdcp_tx_bytes,977761546
+scheduled_tbs,155643
+scheduled_bytes,1231992572
+scheduled_bytes_raw,1264561234
+duplicate_key_diff_size,0
+retransmissions,15346
+measured_cells,21
+all_dlscheduling_events,161212
+dropped_tbsize_zero,0
+dropped_stream_gt0,0
+duplicate_dci_events,5569

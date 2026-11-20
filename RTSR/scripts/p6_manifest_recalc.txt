@@ -6,4 +6,4 @@ p6-12-rtsr|--scheme=rtsr --uePerCell=12 --appDuration=6000
 p6-6-conv|--scheme=conventional --uePerCell=6 --appDuration=6000
 p6-6-rtsr|--scheme=rtsr --uePerCell=6 --appDuration=6000
 p6-9-conv|--scheme=conventional --uePerCell=9 --appDuration=6000
-p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000
+p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000n

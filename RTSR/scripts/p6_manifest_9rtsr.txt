@@ -1,0 +1,1 @@
+p6-9-rtsr|--scheme=rtsr --uePerCell=9 --appDuration=6000
