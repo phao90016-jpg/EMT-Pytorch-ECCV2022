@@ -40,3 +40,10 @@ RTSR/results/p6/*/rlc_drops.csv
 RTSR/results/p6/*/*flowmon*.xml
 RTSR/results/p6/*/ctrl_sinr_buckets.csv
 RTSR/results/p6/*/wb_data_sinr_buckets.csv
+
+# RTSR 容量重算产物（与 p6/ 同规则：per-frame 明细与 XML 体积大、可由 p6_recalc.sh 重跑生成）
+RTSR/results/p6_recalc/*/frame_stats_port*_ue*.csv
+RTSR/results/p6_recalc/*/rlc_drops.csv
+RTSR/results/p6_recalc/*/*flowmon*.xml
+RTSR/results/p6_recalc/*/ctrl_sinr_buckets.csv
+RTSR/results/p6_recalc/*/wb_data_sinr_buckets.csv
