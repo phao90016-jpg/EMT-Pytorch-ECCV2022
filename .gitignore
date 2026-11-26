@@ -47,3 +47,13 @@ RTSR/results/p6_recalc/*/rlc_drops.csv
 RTSR/results/p6_recalc/*/*flowmon*.xml
 RTSR/results/p6_recalc/*/ctrl_sinr_buckets.csv
 RTSR/results/p6_recalc/*/wb_data_sinr_buckets.csv
+
+# TDD 图样探针产物（与 p6/ 同规则：per-frame 明细与 XML 体积大、可由 scripts/probe_tdd.py 重跑生成）
+RTSR/results/tdd_probe/*/frame_stats_port*_ue*.csv
+RTSR/results/tdd_probe/*/rtsr-flowmon.xml
+RTSR/results/tdd_probe/*/ctrl_sinr_buckets.csv
+RTSR/results/tdd_probe/*/wb_data_sinr_buckets.csv
+
+# p6 的归档对照 run（_b1_before/）比 p6/*/ 深一层，上面的规则漏掉了它，这里单独补。
+# 证据是 before_summary.csv 与 layer_report.md，FlowMonitor 原始 XML（14.5 MB）不入库。
+RTSR/results/p6/_b1_before/*/rtsr-flowmon.xml

@@ -1,0 +1,9 @@
+TDD 图样 DDDDDDDSU（9 槽，DL 占比 0.833）在 ns-3 中直接中止：
+
+    NS_FATAL: Cannot TX while RX
+    （src/nr/model/nr-spectrum-phy.cc:587）
+
+同一批里 6/8/12 槽都能正常跑完，所以这是 5G-LENA 的 TDD 定时约束，
+不是参数写错。本目录因此为空，保留它是为了让"为什么没有数据"有据可查。
+
+详见 docs/stage1/09_容量扩展失败复盘.md §3.6 结论 3。
