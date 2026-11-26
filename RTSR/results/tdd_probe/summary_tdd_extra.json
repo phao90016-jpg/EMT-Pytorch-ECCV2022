@@ -1,0 +1,22 @@
+[
+ {
+  "name": "DDDDDSU",
+  "pattern": "DDDDDSU",
+  "dl": 0.7857,
+  "rc": -6,
+  "wall_s": 6.7,
+  "cap_mbps": null,
+  "cap_per_dl": null,
+  "bler": null
+ },
+ {
+  "name": "DDDDDDSU",
+  "pattern": "DDDDDDSU",
+  "dl": 0.8125,
+  "rc": 0,
+  "wall_s": 146.4,
+  "cap_mbps": 119.33,
+  "cap_per_dl": 146.86,
+  "bler": "2.25469"
+ }
+]

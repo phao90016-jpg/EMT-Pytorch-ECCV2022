@@ -1,0 +1,58 @@
+[
+ {
+  "name": "DDDSU",
+  "pattern": "DDDSU",
+  "dl": 0.7,
+  "rc": 0,
+  "wall_s": 149.8,
+  "scheduled_bytes": "41924486",
+  "cells": "3",
+  "cap_mbps": 111.8,
+  "cap_per_dl": 159.71,
+  "bler": "2.39101",
+  "mean_sinr": "46.8093",
+  "rx_tbs": "11125"
+ },
+ {
+  "name": "DDDDSU",
+  "pattern": "DDDDSU",
+  "dl": 0.75,
+  "rc": 0,
+  "wall_s": 167.5,
+  "scheduled_bytes": "42623998",
+  "cells": "3",
+  "cap_mbps": 113.66,
+  "cap_per_dl": 151.55,
+  "bler": "2.64919",
+  "mean_sinr": "47.0755",
+  "rx_tbs": "10909"
+ },
+ {
+  "name": "DDDDDDDSU",
+  "pattern": "DDDDDDDSU",
+  "dl": 0.8333,
+  "rc": -6,
+  "wall_s": 130.1,
+  "scheduled_bytes": null,
+  "cells": null,
+  "cap_mbps": null,
+  "cap_per_dl": null,
+  "bler": null,
+  "mean_sinr": null,
+  "rx_tbs": null
+ },
+ {
+  "name": "DDDDDDDDDDSU",
+  "pattern": "DDDDDDDDDDSU",
+  "dl": 0.875,
+  "rc": 0,
+  "wall_s": 131.2,
+  "scheduled_bytes": "44896077",
+  "cells": "3",
+  "cap_mbps": 119.72,
+  "cap_per_dl": 136.83,
+  "bler": "2.26516",
+  "mean_sinr": "46.9365",
+  "rx_tbs": "10816"
+ }
+]

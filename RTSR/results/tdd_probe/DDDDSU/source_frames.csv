@@ -1,0 +1,6 @@
+metric,value
+frames_sent,218
+frames_seen_by_sink,203
+frames_complete,193
+frames_within_pdb,60
+frames_never_seen,15
